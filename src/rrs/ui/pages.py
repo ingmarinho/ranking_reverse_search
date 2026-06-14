@@ -13,6 +13,8 @@ from rrs.store.db import Database, Job, JobStatus, Scene
 GetDb = Callable[[], Database]
 GetCfg = Callable[[], Config]
 
+_INFLIGHT: set[int] = set()
+
 
 def register_pages(get_db: GetDb, get_cfg: GetCfg) -> None:
     @ui.page("/")
@@ -57,6 +59,7 @@ def _render_url_input(db: Database, cfg: Config) -> None:
 
 
 async def _run_pipeline(db: Database, cfg: Config, job_id: int) -> None:
+    _INFLIGHT.add(job_id)
     try:
         await run_pre_interactive_pipeline(
             db=db, job_id=job_id, data_dir=cfg.data_dir,
@@ -64,6 +67,8 @@ async def _run_pipeline(db: Database, cfg: Config, job_id: int) -> None:
         )
     except Exception:
         pass
+    finally:
+        _INFLIGHT.discard(job_id)
 
 
 def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
@@ -77,8 +82,20 @@ def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
         JobStatus.DETECTING_SCENES,
         JobStatus.EXTRACTING_FRAMES,
     ):
-        _render_progress(job)
-        ui.timer(1.0, lambda: ui.navigate.reload(), once=True)
+        if job.id in _INFLIGHT:
+            _render_progress(job)
+            ui.timer(1.0, lambda: ui.navigate.reload(), once=True)
+        else:
+            _render_progress(job)
+            ui.html('<div class="rrs-meta" style="margin-top:14px">no worker running for this stage</div>')
+            # NOTE: resume re-runs the current stage from scratch. If the prior
+            # worker died mid-write (rare), the user should START OVER instead.
+            def _resume():
+                import asyncio
+                asyncio.create_task(_run_pipeline(db, cfg, job.id))
+                ui.navigate.reload()
+            ui.button("RESUME", on_click=_resume).classes("rrs-btn rrs-btn-primary")
+            ui.button("START OVER", on_click=lambda: _start_over(db, job.id)).classes("rrs-btn")
         return
     if status == JobStatus.INTERACTIVE:
         _render_scene_list(db, cfg, job)
@@ -94,6 +111,9 @@ def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
             f'{(job.duration_sec or 0):.1f}s</div>'
         )
     ui.button("START OVER", on_click=lambda: _start_over(db, job.id)).classes("rrs-btn")
+
+    if cfg.imgbb_api_key is None:
+        ui.html('<div class="rrs-error">IMGBB_API_KEY not set — engine buttons disabled</div>')
 
     scenes = db.list_scenes(job.id)
     for scene in scenes:
