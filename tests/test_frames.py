@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rrs.pipeline.frames import extract_frame, extract_evenly_spaced
+from rrs.pipeline.frames import extract_evenly_spaced, extract_frame
 
 
 def test_extract_frame_writes_jpeg(synthetic_video: Path, tmp_path: Path):

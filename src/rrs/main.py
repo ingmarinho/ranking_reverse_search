@@ -37,6 +37,7 @@ def main() -> None:
 
     if _DB.get_setting("enabled_engines") is None:
         import json
+
         _DB.set_setting("enabled_engines", json.dumps(default_enabled_ids()))
 
     _serve_static(_CFG)

@@ -10,9 +10,19 @@ from rrs.pipeline.trim import TrimError, trim_clip
 
 def _duration_seconds(path: Path) -> float:
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=nw=1:nk=1", str(path)],
-        capture_output=True, text=True, check=True,
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=nw=1:nk=1",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.strip()
     return float(out)
 

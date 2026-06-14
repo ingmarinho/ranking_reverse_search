@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from nicegui import ui
 
@@ -17,7 +17,10 @@ CANDIDATE_COUNT = 9
 
 
 async def open_frame_picker(
-    db: Database, data_dir: Path, job_id: int, scene: Scene,
+    db: Database,
+    data_dir: Path,
+    job_id: int,
+    scene: Scene,
     on_close: Callable[[], None],
 ) -> None:
     """Show selected frames + grid of CANDIDATE_COUNT candidates.
@@ -59,8 +62,8 @@ async def open_frame_picker(
                 # Currently selected row
                 ui.html(
                     '<div class="rrs-label" style="margin-bottom:6px">'
-                    f'CURRENTLY SELECTED · {len(selected)} — click × to remove'
-                    '</div>'
+                    f"CURRENTLY SELECTED · {len(selected)} — click × to remove"
+                    "</div>"
                 )
                 if selected:
                     with ui.element("div").classes("rrs-frame-strip"):
@@ -68,10 +71,10 @@ async def open_frame_picker(
                             url = file_url(f.path, data_dir)
                             html_str = (
                                 f'<div class="rrs-frame selected removable" {cell_style}>'
-                                f'  <span class="rrs-ord">{idx+1:02d}</span>'
+                                f'  <span class="rrs-ord">{idx + 1:02d}</span>'
                                 f'  <span class="rrs-remove" title="remove">×</span>'
                                 f'  <img src="{url}">'
-                                f'</div>'
+                                f"</div>"
                             )
                             el = ui.html(html_str)
 
@@ -86,8 +89,8 @@ async def open_frame_picker(
                 # Candidate grid
                 ui.html(
                     '<div class="rrs-label" style="margin-top:6px; margin-bottom:6px">'
-                    'CANDIDATES — click to add'
-                    '</div>'
+                    "CANDIDATES — click to add"
+                    "</div>"
                 )
                 with ui.element("div").classes("rrs-grid-9"):
                     for frame_number, path in candidate_meta:
@@ -96,14 +99,14 @@ async def open_frame_picker(
                         url = file_url(path, data_dir)
                         sel_cls = " selected" if is_sel else ""
                         ord_html = (
-                            f'<span class="rrs-ord">{ordinal+1:02d}</span>'
-                            if is_sel else ""
+                            f'<span class="rrs-ord">{ordinal + 1:02d}</span>' if is_sel else ""
                         )
                         html_str = (
-                            f'<div class="rrs-frame{sel_cls}" data-fn="{frame_number}" {cell_style}>'
-                            f'  {ord_html}'
+                            f'<div class="rrs-frame{sel_cls}" data-fn="{frame_number}" '
+                            f"{cell_style}>"
+                            f"  {ord_html}"
                             f'  <img src="{url}">'
-                            f'</div>'
+                            f"</div>"
                         )
                         el = ui.html(html_str)
 
@@ -116,9 +119,8 @@ async def open_frame_picker(
             with body:
                 _contents()
 
-            with ui.element("div").style(
-                "text-align:right; margin-top: 18px"
-            ):
+            with ui.element("div").style("text-align:right; margin-top: 18px"):
+
                 def _done() -> None:
                     dialog.close()
                     on_close()
@@ -137,13 +139,19 @@ def _toggle_selection(db: Database, scene: Scene, frame_number: int, path: Path)
             return
     next_ord = max((f.ordinal for f in frames), default=-1) + 1
     db.insert_frame(
-        scene_id=scene.id, ordinal=next_ord, frame_number=frame_number,
-        path=str(path), is_selected=True,
+        scene_id=scene.id,
+        ordinal=next_ord,
+        frame_number=frame_number,
+        path=str(path),
+        is_selected=True,
     )
 
 
 async def open_trim_modal(
-    db: Database, data_dir: Path, job_id: int, scene: Scene,
+    db: Database,
+    data_dir: Path,
+    job_id: int,
+    scene: Scene,
 ) -> None:
     src = db.get_source(scene.id)
     if src is None or not src.path:
@@ -151,9 +159,18 @@ async def open_trim_modal(
 
     try:
         probe = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "default=nw=1:nk=1", src.path],
-            capture_output=True, text=True,
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=nw=1:nk=1",
+                src.path,
+            ],
+            capture_output=True,
+            text=True,
         )
     except FileNotFoundError:
         ui.notify("ffprobe not on PATH", type="negative")
@@ -183,12 +200,16 @@ async def open_trim_modal(
             )
             ui.html(
                 f'<div class="rrs-meta rrs-timecode" style="margin-top:10px">'
-                f'source duration: {source_duration:.2f}s  ·  scene Δ {scene_duration:.2f}s'
-                f'</div>'
+                f"source duration: {source_duration:.2f}s  ·  scene Δ {scene_duration:.2f}s"
+                f"</div>"
             )
             with ui.row().classes("w-full").style("gap:12px; margin-top:14px"):
-                start_in = ui.number(label="START (s)", value=round(initial_start, 3), format="%.3f").classes("rrs-input")
-                end_in = ui.number(label="END (s)", value=round(initial_end, 3), format="%.3f").classes("rrs-input")
+                start_in = ui.number(
+                    label="START (s)", value=round(initial_start, 3), format="%.3f"
+                ).classes("rrs-input")
+                end_in = ui.number(
+                    label="END (s)", value=round(initial_end, 3), format="%.3f"
+                ).classes("rrs-input")
 
             async def on_save() -> None:
                 a = float(start_in.value)

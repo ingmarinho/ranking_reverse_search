@@ -36,9 +36,7 @@ def extract_frame(video_path: Path, frame_number: int, out_path: Path) -> Path:
         cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_number))
         ok, frame = cap.read()
         if not ok or frame is None:
-            raise FrameExtractError(
-                f"could not read frame {frame_number} from {video_path}"
-            )
+            raise FrameExtractError(f"could not read frame {frame_number} from {video_path}")
     finally:
         cap.release()
     out_path.parent.mkdir(parents=True, exist_ok=True)

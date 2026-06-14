@@ -21,5 +21,11 @@ def default_enabled_ids() -> list[str]:
     return [e.id for e in ALL_ENGINES if e.enabled_by_default]
 
 
-__all__ = ["Engine", "EngineCategory", "EngineStatus", "ALL_ENGINES",
-           "get_engine", "default_enabled_ids"]
+__all__ = [
+    "Engine",
+    "EngineCategory",
+    "EngineStatus",
+    "ALL_ENGINES",
+    "get_engine",
+    "default_enabled_ids",
+]

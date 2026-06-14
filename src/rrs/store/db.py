@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import enum
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Iterable
 
 
-class JobStatus(str, enum.Enum):
+class JobStatus(enum.StrEnum):
     DOWNLOADING = "downloading"
     DETECTING_SCENES = "detecting_scenes"
     EXTRACTING_FRAMES = "extracting_frames"
@@ -128,9 +128,7 @@ class Database:
         self._conn.commit()
 
     def list_scenes(self, job_id: int) -> list[Scene]:
-        cur = self._conn.execute(
-            "SELECT * FROM scenes WHERE job_id = ? ORDER BY idx", (job_id,)
-        )
+        cur = self._conn.execute("SELECT * FROM scenes WHERE job_id = ? ORDER BY idx", (job_id,))
         return [self._row_to_scene(r) for r in cur.fetchall()]
 
     # ---- frames ----
@@ -158,9 +156,7 @@ class Database:
         return [self._row_to_frame(r) for r in cur.fetchall()]
 
     def set_frame_imgbb_url(self, frame_id: int, url: str) -> None:
-        self._conn.execute(
-            "UPDATE frames SET imgbb_url = ? WHERE id = ?", (url, frame_id)
-        )
+        self._conn.execute("UPDATE frames SET imgbb_url = ? WHERE id = ?", (url, frame_id))
         self._conn.commit()
 
     def set_frame_selected(self, frame_id: int, selected: bool) -> None:
@@ -190,15 +186,11 @@ class Database:
         return cur.lastrowid
 
     def get_source(self, scene_id: int) -> Source | None:
-        row = self._conn.execute(
-            "SELECT * FROM sources WHERE scene_id = ?", (scene_id,)
-        ).fetchone()
+        row = self._conn.execute("SELECT * FROM sources WHERE scene_id = ?", (scene_id,)).fetchone()
         return self._row_to_source(row) if row else None
 
     def set_source_downloaded(self, source_id: int, path: str) -> None:
-        self._conn.execute(
-            "UPDATE sources SET path = ? WHERE id = ?", (path, source_id)
-        )
+        self._conn.execute("UPDATE sources SET path = ? WHERE id = ?", (path, source_id))
         self._conn.commit()
 
     def set_source_clip(
@@ -209,8 +201,7 @@ class Database:
         clip_path: str,
     ) -> None:
         self._conn.execute(
-            "UPDATE sources SET trim_start_sec = ?, trim_end_sec = ?, clip_path = ?"
-            " WHERE id = ?",
+            "UPDATE sources SET trim_start_sec = ?, trim_end_sec = ?, clip_path = ? WHERE id = ?",
             (trim_start_sec, trim_end_sec, clip_path, source_id),
         )
         self._conn.commit()
@@ -218,9 +209,7 @@ class Database:
     # ---- settings ----
 
     def get_setting(self, key: str) -> str | None:
-        row = self._conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (key,)
-        ).fetchone()
+        row = self._conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
         return row["value"] if row else None
 
     def set_setting(self, key: str, value: str) -> None:
@@ -248,24 +237,36 @@ class Database:
     @staticmethod
     def _row_to_scene(r: sqlite3.Row) -> Scene:
         return Scene(
-            id=r["id"], job_id=r["job_id"], idx=r["idx"],
-            start_frame=r["start_frame"], end_frame=r["end_frame"],
-            start_sec=r["start_sec"], end_sec=r["end_sec"],
+            id=r["id"],
+            job_id=r["job_id"],
+            idx=r["idx"],
+            start_frame=r["start_frame"],
+            end_frame=r["end_frame"],
+            start_sec=r["start_sec"],
+            end_sec=r["end_sec"],
         )
 
     @staticmethod
     def _row_to_frame(r: sqlite3.Row) -> Frame:
         return Frame(
-            id=r["id"], scene_id=r["scene_id"], ordinal=r["ordinal"],
-            frame_number=r["frame_number"], path=r["path"],
-            imgbb_url=r["imgbb_url"], is_selected=bool(r["is_selected"]),
+            id=r["id"],
+            scene_id=r["scene_id"],
+            ordinal=r["ordinal"],
+            frame_number=r["frame_number"],
+            path=r["path"],
+            imgbb_url=r["imgbb_url"],
+            is_selected=bool(r["is_selected"]),
         )
 
     @staticmethod
     def _row_to_source(r: sqlite3.Row) -> Source:
         return Source(
-            id=r["id"], scene_id=r["scene_id"], url=r["url"], path=r["path"],
-            trim_start_sec=r["trim_start_sec"], trim_end_sec=r["trim_end_sec"],
+            id=r["id"],
+            scene_id=r["scene_id"],
+            url=r["url"],
+            path=r["path"],
+            trim_start_sec=r["trim_start_sec"],
+            trim_end_sec=r["trim_end_sec"],
             clip_path=r["clip_path"],
         )
 

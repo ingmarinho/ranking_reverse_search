@@ -1,6 +1,7 @@
 """Shared pytest fixtures. The synthetic_video fixture builds a small
 multi-scene video with ffmpeg so scene detection / frame extraction tests
 have a real file to work on without checking in binary fixtures."""
+
 from __future__ import annotations
 
 import shutil
@@ -18,12 +19,36 @@ def synthetic_video(tmp_path_factory) -> Path:
         pytest.skip("ffmpeg not on PATH")
     out = tmp_path_factory.mktemp("fix") / "synthetic.mp4"
     cmd = [
-        "ffmpeg", "-y", "-v", "error",
-        "-f", "lavfi", "-t", "2", "-i", "color=c=red:s=320x180:r=24",
-        "-f", "lavfi", "-t", "2", "-i", "color=c=green:s=320x180:r=24",
-        "-f", "lavfi", "-t", "2", "-i", "color=c=blue:s=320x180:r=24",
-        "-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1[v]",
-        "-map", "[v]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        "ffmpeg",
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-t",
+        "2",
+        "-i",
+        "color=c=red:s=320x180:r=24",
+        "-f",
+        "lavfi",
+        "-t",
+        "2",
+        "-i",
+        "color=c=green:s=320x180:r=24",
+        "-f",
+        "lavfi",
+        "-t",
+        "2",
+        "-i",
+        "color=c=blue:s=320x180:r=24",
+        "-filter_complex",
+        "[0:v][1:v][2:v]concat=n=3:v=1[v]",
+        "-map",
+        "[v]",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
         str(out),
     ]
     subprocess.run(cmd, check=True)

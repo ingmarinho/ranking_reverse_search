@@ -5,13 +5,16 @@ import pytest
 from rrs.pipeline.engines import ALL_ENGINES, get_engine
 
 
-@pytest.mark.parametrize("engine_id, expected_host", [
-    ("google_lens", "lens.google.com"),
-    ("yandex", "yandex.com"),
-    ("bing", "bing.com"),
-    ("tineye", "tineye.com"),
-    ("saucenao", "saucenao.com"),
-])
+@pytest.mark.parametrize(
+    "engine_id, expected_host",
+    [
+        ("google_lens", "lens.google.com"),
+        ("yandex", "yandex.com"),
+        ("bing", "bing.com"),
+        ("tineye", "tineye.com"),
+        ("saucenao", "saucenao.com"),
+    ],
+)
 def test_ready_engines_emit_url_with_image(engine_id: str, expected_host: str):
     e = get_engine(engine_id)
     assert e is not None

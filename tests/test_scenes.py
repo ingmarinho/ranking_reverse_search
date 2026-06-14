@@ -16,11 +16,26 @@ def test_detect_scenes_finds_three_in_synthetic(synthetic_video: Path):
 
 def test_detect_scenes_falls_back_to_single_scene_for_static(tmp_path):
     import subprocess
+
     out = tmp_path / "static.mp4"
     subprocess.run(
-        ["ffmpeg", "-y", "-v", "error",
-         "-f", "lavfi", "-t", "1", "-i", "color=c=black:s=160x90:r=24",
-         "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out)],
+        [
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-t",
+            "1",
+            "-i",
+            "color=c=black:s=160x90:r=24",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(out),
+        ],
         check=True,
     )
     scenes = detect_scenes(out, threshold=27.0)

@@ -5,8 +5,8 @@ import sqlite3
 import pytest
 
 from rrs.store.db import (
-    JobStatus,
     Database,
+    JobStatus,
     open_db,
 )
 
@@ -49,10 +49,13 @@ def test_set_job_source(db: Database):
 
 def test_insert_scenes_and_list(db: Database):
     job_id = db.create_job(url="x")
-    db.insert_scenes(job_id, [
-        (0, 0, 48, 0.0, 2.0),
-        (1, 48, 96, 2.0, 4.0),
-    ])
+    db.insert_scenes(
+        job_id,
+        [
+            (0, 0, 48, 0.0, 2.0),
+            (1, 48, 96, 2.0, 4.0),
+        ],
+    )
     scenes = db.list_scenes(job_id)
     assert len(scenes) == 2
     assert scenes[0].idx == 0

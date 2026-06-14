@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from nicegui import ui
 
-from rrs.pipeline.engines import ALL_ENGINES, get_engine
+from rrs.pipeline.engines import get_engine
 from rrs.store.db import Database, Frame, Scene
 
 
@@ -42,7 +42,10 @@ def render_scene_card(
     on_open_trim: Callable[[Scene], None],
     on_search_click: Callable[[Frame, str], None],
 ) -> None:
-    """Render one scene card. `aspect` is (width, height) of the source video, used for thumbnail sizing."""
+    """Render one scene card.
+
+    `aspect` is (width, height) of the source video, used for thumbnail sizing.
+    """
     selected = [f for f in db.list_frames(scene.id) if f.is_selected]
     enabled_ids = json.loads(db.get_setting("enabled_engines") or "[]")
 
@@ -52,10 +55,10 @@ def render_scene_card(
             f'<div class="rrs-scene-head">'
             f'  <span class="rrs-scene-idx">{scene.idx + 1:02d} / {total_scenes:02d}</span>'
             f'  <span class="rrs-scene-range rrs-timecode">'
-            f'    {format_timecode(scene.start_sec)} — {format_timecode(scene.end_sec)}'
-            f'  </span>'
+            f"    {format_timecode(scene.start_sec)} — {format_timecode(scene.end_sec)}"
+            f"  </span>"
             f'  <span class="rrs-scene-delta rrs-timecode">Δ {delta:.2f}s</span>'
-            f'</div>'
+            f"</div>"
         )
         _render_frame_strip(scene, selected, data_dir, aspect, on_open_frame_picker)
         for ordinal, f in enumerate(selected):
@@ -77,9 +80,9 @@ def _render_frame_strip(
             url = file_url(f.path, data_dir)
             html = (
                 f'<div class="rrs-frame selected" {style}>'
-                f'  <span class="rrs-ord">{ordinal+1:02d}</span>'
+                f'  <span class="rrs-ord">{ordinal + 1:02d}</span>'
                 f'  <img src="{url}" alt="frame {f.frame_number}">'
-                f'</div>'
+                f"</div>"
             )
             container = ui.html(html)
             container.on("click", lambda _, s=scene: on_open_frame_picker(s))
@@ -88,14 +91,16 @@ def _render_frame_strip(
 
 
 def _render_engine_row(
-    frame: Frame, ordinal: int, enabled_ids: list[str],
+    frame: Frame,
+    ordinal: int,
+    enabled_ids: list[str],
     on_search_click: Callable[[Frame, str], None],
 ) -> None:
     with ui.element("div").classes("rrs-engines"):
         ui.html(
-            f'<span class="rrs-engine-tag" title="search frame {ordinal+1:02d}">'
-            f'{ordinal+1:02d}'
-            f'</span>'
+            f'<span class="rrs-engine-tag" title="search frame {ordinal + 1:02d}">'
+            f"{ordinal + 1:02d}"
+            f"</span>"
         )
         for eid in enabled_ids:
             engine = get_engine(eid)
@@ -103,22 +108,27 @@ def _render_engine_row(
                 continue
             chip = ui.html(
                 f'<button class="rrs-btn rrs-engine-chip" data-status="{engine.status}">'
-                f'{engine.name.upper()}'
-                f'</button>'
+                f"{engine.name.upper()}"
+                f"</button>"
             )
             chip.on("click", lambda _, f=frame, e=eid: on_search_click(f, e))
 
 
 def _render_source_row(
-    db: Database, data_dir: Path, scene: Scene,
+    db: Database,
+    data_dir: Path,
+    scene: Scene,
     on_open_trim: Callable[[Scene], None],
 ) -> None:
     src = db.get_source(scene.id)
     with ui.element("div").classes("rrs-source-row"):
-        inp = ui.input(value=(src.url if src else ""), placeholder="source url").classes("rrs-input")
+        inp = ui.input(value=(src.url if src else ""), placeholder="source url").classes(
+            "rrs-input"
+        )
 
         async def on_download() -> None:
             from rrs.ui.pages import download_source_for_scene
+
             url = inp.value.strip()
             if not url:
                 return
@@ -128,7 +138,7 @@ def _render_source_row(
         ui.button("DOWNLOAD", on_click=on_download).classes("rrs-btn")
     if src and src.path:
         with ui.element("div").classes("rrs-status-line"):
-            ui.html(f'<span>source: {Path(src.path).name}</span>')
+            ui.html(f"<span>source: {Path(src.path).name}</span>")
             ui.button("TRIM CLIP", on_click=lambda s=scene: on_open_trim(s)).classes("rrs-btn")
             if src.clip_path:
                 clip_url = file_url(src.clip_path, data_dir)

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from rrs.pipeline.download import download_video
 from rrs.pipeline.frames import extract_frame
@@ -62,14 +62,14 @@ async def run_pre_interactive_pipeline(
             download_video, job.url, paths.source, 1080, on_download_progress
         )
         db.set_job_source(
-            job_id, title=result.title, duration_sec=result.duration_sec,
+            job_id,
+            title=result.title,
+            duration_sec=result.duration_sec,
             source_path=str(result.path),
         )
 
         _set_status(db, job_id, JobStatus.DETECTING_SCENES, on_status)
-        scenes = await asyncio.to_thread(
-            detect_scenes, paths.source, scene_threshold
-        )
+        scenes = await asyncio.to_thread(detect_scenes, paths.source, scene_threshold)
         db.insert_scenes(
             job_id,
             [(s.idx, s.start_frame, s.end_frame, s.start_sec, s.end_sec) for s in scenes],
@@ -78,14 +78,19 @@ async def run_pre_interactive_pipeline(
 
         _set_status(db, job_id, JobStatus.EXTRACTING_FRAMES, on_status)
         out_paths = [paths.frames_dir / str(s.idx) / "0.jpg" for s in scenes]
-        await asyncio.gather(*(
-            asyncio.to_thread(extract_frame, paths.source, s.start_frame, out)
-            for s, out in zip(scenes, out_paths)
-        ))
-        for s, row, out in zip(scenes, scene_rows, out_paths):
+        await asyncio.gather(
+            *(
+                asyncio.to_thread(extract_frame, paths.source, s.start_frame, out)
+                for s, out in zip(scenes, out_paths, strict=True)
+            )
+        )
+        for s, row, out in zip(scenes, scene_rows, out_paths, strict=True):
             db.insert_frame(
-                scene_id=row.id, ordinal=0, frame_number=s.start_frame,
-                path=str(out), is_selected=True,
+                scene_id=row.id,
+                ordinal=0,
+                frame_number=s.start_frame,
+                path=str(out),
+                is_selected=True,
             )
 
         _set_status(db, job_id, JobStatus.INTERACTIVE, on_status)

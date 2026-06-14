@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from nicegui import ui
 
@@ -34,9 +34,7 @@ def register_pages(get_db: GetDb, get_cfg: GetCfg) -> None:
 
 def _find_active_job(db: Database) -> Job | None:
     """Return the most recent non-deleted job, or None."""
-    row = db._conn.execute(
-        "SELECT id FROM jobs ORDER BY id DESC LIMIT 1"
-    ).fetchone()
+    row = db._conn.execute("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").fetchone()
     return db.get_job(row["id"]) if row else None
 
 
@@ -62,14 +60,18 @@ def _render_url_input(db: Database, cfg: Config) -> None:
             asyncio.create_task(_run_pipeline(db, cfg, job_id))
             ui.navigate.reload()
 
-        ui.button("PROCESS VIDEO", on_click=on_click).props("flat").classes("rrs-btn rrs-btn-primary")
+        ui.button("PROCESS VIDEO", on_click=on_click).props("flat").classes(
+            "rrs-btn rrs-btn-primary"
+        )
 
 
 async def _run_pipeline(db: Database, cfg: Config, job_id: int) -> None:
     _INFLIGHT.add(job_id)
     try:
         await run_pre_interactive_pipeline(
-            db=db, job_id=job_id, data_dir=cfg.data_dir,
+            db=db,
+            job_id=job_id,
+            data_dir=cfg.data_dir,
             scene_threshold=cfg.scene_threshold,
         )
     except Exception:
@@ -82,7 +84,9 @@ def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
     status = job.status
     if status == JobStatus.FAILED:
         ui.html(f'<div class="rrs-error">{(job.error or "Unknown error")}</div>')
-        ui.button("START OVER", on_click=lambda: _start_over(db, cfg.data_dir, job.id)).classes("rrs-btn")
+        ui.button("START OVER", on_click=lambda: _start_over(db, cfg.data_dir, job.id)).classes(
+            "rrs-btn"
+        )
         return
     if status in (
         JobStatus.DOWNLOADING,
@@ -94,14 +98,21 @@ def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
             ui.timer(1.0, lambda: ui.navigate.reload(), once=True)
         else:
             _render_progress(job)
-            ui.html('<div class="rrs-meta" style="margin-top:14px">no worker running for this stage</div>')
+            ui.html(
+                '<div class="rrs-meta" style="margin-top:14px">'
+                "no worker running for this stage</div>"
+            )
+
             # NOTE: resume re-runs the current stage from scratch. If the prior
             # worker died mid-write (rare), the user should START OVER instead.
             def _resume():
                 asyncio.create_task(_run_pipeline(db, cfg, job.id))
                 ui.navigate.reload()
+
             ui.button("RESUME", on_click=_resume).classes("rrs-btn rrs-btn-primary")
-            ui.button("START OVER", on_click=lambda: _start_over(db, cfg.data_dir, job.id)).classes("rrs-btn")
+            ui.button("START OVER", on_click=lambda: _start_over(db, cfg.data_dir, job.id)).classes(
+                "rrs-btn"
+            )
         return
     if status == JobStatus.INTERACTIVE:
         _render_scene_list(db, cfg, job)
@@ -110,11 +121,10 @@ def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
 
 def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
     with ui.element("div").classes("rrs-meta"):
-        ui.html(
-            f'<div>{(job.title or "Untitled")} — '
-            f'{(job.duration_sec or 0):.1f}s</div>'
-        )
-    ui.button("START OVER", on_click=lambda: _start_over(db, cfg.data_dir, job.id)).classes("rrs-btn")
+        ui.html(f"<div>{(job.title or 'Untitled')} — {(job.duration_sec or 0):.1f}s</div>")
+    ui.button("START OVER", on_click=lambda: _start_over(db, cfg.data_dir, job.id)).classes(
+        "rrs-btn"
+    )
 
     if cfg.imgbb_api_key is None:
         ui.html('<div class="rrs-error">IMGBB_API_KEY not set — engine buttons disabled</div>')
@@ -123,7 +133,10 @@ def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
     scenes = db.list_scenes(job.id)
     for scene in scenes:
         render_scene_card(
-            db=db, data_dir=cfg.data_dir, scene=scene, total_scenes=len(scenes),
+            db=db,
+            data_dir=cfg.data_dir,
+            scene=scene,
+            total_scenes=len(scenes),
             aspect=aspect,
             on_open_frame_picker=lambda s: _open_frame_picker(db, cfg, s),
             on_open_trim=lambda s: _open_trim(db, cfg, s),
@@ -158,9 +171,7 @@ async def _do_reverse_search(db: Database, cfg: Config, frame, engine_id: str) -
         image_url = frame.imgbb_url
     else:
         try:
-            image_url = await asyncio.to_thread(
-                upload_image, Path(frame.path), cfg.imgbb_api_key
-            )
+            image_url = await asyncio.to_thread(upload_image, Path(frame.path), cfg.imgbb_api_key)
         except ImgbbError as exc:
             ui.notify(f"imgbb: {exc}", type="negative")
             return
@@ -199,7 +210,7 @@ def _render_progress(job: Job) -> None:
         JobStatus.EXTRACTING_FRAMES: "EXTRACTING FRAMES",
     }
     label = labels.get(job.status, str(job.status))
-    ui.html(f'<div class="rrs-top-progress indet"><span></span></div>')
+    ui.html('<div class="rrs-top-progress indet"><span></span></div>')
     ui.html(f'<div class="rrs-stage-label">{label}</div>')
 
 

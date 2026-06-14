@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from rrs.pipeline.download import DownloadError
 from rrs.pipeline.jobs import job_paths, run_pre_interactive_pipeline
 from rrs.store.db import JobStatus, open_db
 
@@ -16,17 +16,17 @@ def db():
 
 
 @pytest.mark.asyncio
-async def test_run_pre_interactive_pipeline_happy_path(
-    db, tmp_path, synthetic_video: Path
-):
+async def test_run_pre_interactive_pipeline_happy_path(db, tmp_path, synthetic_video: Path):
     job_id = db.create_job(url="x")
     statuses: list[JobStatus] = []
 
     def fake_download(url, out_path, max_height, progress_hook=None):
         import shutil
+
         out_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(synthetic_video, out_path)
         from rrs.pipeline.download import DownloadResult
+
         return DownloadResult(path=out_path, title="t", duration_sec=6.0)
 
     def on_status(s: JobStatus) -> None:
@@ -34,8 +34,11 @@ async def test_run_pre_interactive_pipeline_happy_path(
 
     with patch("rrs.pipeline.jobs.download_video", side_effect=fake_download):
         await run_pre_interactive_pipeline(
-            db=db, job_id=job_id, data_dir=tmp_path,
-            scene_threshold=27.0, on_status=on_status,
+            db=db,
+            job_id=job_id,
+            data_dir=tmp_path,
+            scene_threshold=27.0,
+            on_status=on_status,
         )
 
     assert statuses == [
@@ -59,18 +62,20 @@ async def test_run_pre_interactive_pipeline_happy_path(
 
 @pytest.mark.asyncio
 async def test_run_pre_interactive_pipeline_download_failure_marks_failed(
-    db, tmp_path,
+    db,
+    tmp_path,
 ):
     job_id = db.create_job(url="x")
 
     def boom(*a, **k):
-        from rrs.pipeline.download import DownloadError
         raise DownloadError("boom")
 
     with patch("rrs.pipeline.jobs.download_video", side_effect=boom):
-        with pytest.raises(Exception):
+        with pytest.raises(DownloadError):
             await run_pre_interactive_pipeline(
-                db=db, job_id=job_id, data_dir=tmp_path,
+                db=db,
+                job_id=job_id,
+                data_dir=tmp_path,
                 scene_threshold=27.0,
             )
     assert db.get_job(job_id).status == JobStatus.FAILED
