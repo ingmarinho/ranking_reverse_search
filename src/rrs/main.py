@@ -27,7 +27,7 @@ def _serve_static(cfg: Config) -> None:
     static_dir = Path(__file__).parent / "ui" / "static"
     app.add_static_files("/_static", str(static_dir))
     app.add_static_files("/_data", str(cfg.data_dir))
-    ui.add_head_html('<link rel="stylesheet" href="/_static/app.css">')
+    ui.add_head_html('<link rel="stylesheet" href="/_static/app.css">', shared=True)
 
 
 def main() -> None:
