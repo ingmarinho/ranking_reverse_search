@@ -1,0 +1,73 @@
+# CLAUDE.md
+
+`rrs` (ranking reverse search) — a local NiceGUI app for sourcing video clips
+out of compilation/ranking videos via reverse image search.
+
+## Commands
+
+```sh
+pip install -e ".[dev]"      # setup (Python 3.11+, ffmpeg + ffprobe on PATH)
+rrs                          # run (or: python -m rrs.main) → http://localhost:8080
+pytest                       # tests
+```
+
+Required/optional env vars: `IMGBB_API_KEY` (needed to host frames for search),
+`DATA_DIR` (default `./data`), `PORT` (default 8080), `SCENE_THRESHOLD` (default 27.0).
+
+## Architecture
+
+Layered, single-process:
+
+`config.py` → `store/` (sqlite) → `pipeline/` → `ui/`, wired in `main.py`.
+
+- **`main.py`** — boots config + DB, registers pages, runs NiceGUI. Holds
+  module-level `_DB`/`_CFG` singletons exposed via `get_db()` / `get_cfg()`,
+  which are passed into the UI layer as callables. Guards both `__main__` and
+  `__mp_main__` (NiceGUI multiprocessing).
+- **`store/db.py` + `store/schema.sql`** — `Database` wraps a sqlite connection;
+  schema is applied on every open (idempotent `CREATE TABLE IF NOT EXISTS`).
+  Tables: `jobs`, `scenes`, `frames`, `sources`, `settings`. Row → frozen
+  dataclass (`Job`, `Scene`, `Frame`, `Source`).
+- **`pipeline/`** — `download` (yt-dlp), `scenes` (PySceneDetect), `frames`
+  (ffmpeg frame extraction), `trim`, `hosting` (imgbb upload), `engines/`,
+  `jobs` (orchestration).
+- **`ui/`** — `pages.py` (wizard / index page), `components.py` (scene cards),
+  `modals.py` (frame picker, trim modal).
+
+## Key patterns
+
+- **Job state machine** (`store/db.py` `JobStatus`):
+  `downloading → detecting_scenes → extracting_frames → interactive`, or
+  `failed`. `pipeline/jobs.py::run_pre_interactive_pipeline` drives it; on any
+  exception it calls `db.fail_job` and re-raises. Blocking work (download, scene
+  detect, frame extract) runs via `asyncio.to_thread` to keep the UI responsive.
+- **Engine registry** (`pipeline/engines/`): each engine is a frozen `Engine`
+  dataclass with `status` (`"ready"` | `"todo"`) and a `url_template`.
+  `search_url()` returns `None` for `todo`/stub engines. `ALL_ENGINES` aggregates
+  them; the enabled-engine set is persisted as JSON in the `settings` table
+  (seeded from `default_enabled_ids()` on first run). Add an engine by creating a
+  module exporting `ENGINE` and registering it in `engines/__init__.py`.
+- **Data layout**: per-job files under `DATA_DIR/jobs/<id>/`
+  (`source.mp4`, `frames/<scene>/<ordinal>.jpg`, `sources/`, `clips/`); sqlite at
+  `DATA_DIR/app.db`. Served read-only at `/_data`; static assets at `/_static`.
+
+## Gotchas
+
+- `ffmpeg` **and** `ffprobe` must be on PATH — probed at startup
+  (`MissingDependencyError`), except when `load_config(probe_ffmpeg=False)`.
+- Reverse search needs `IMGBB_API_KEY`: frames are uploaded to imgbb to get a
+  public URL fed to engine `url_template`s. Without it, the UI shows a banner.
+- NiceGUI 3.x: `ui.add_head_html(...)` must pass `shared=True` (see commit
+  `a7b4184`).
+- `pages.py` occasionally reaches into `db._conn` directly for ad-hoc queries.
+
+## Testing
+
+- `tests/conftest.py` provides `synthetic_video` (an ffmpeg-built 3-scene clip,
+  so no binary fixtures are checked in) and `isolated_data_dir` (temp `DATA_DIR`).
+- ffmpeg-dependent tests `pytest.skip` when ffmpeg is absent.
+- httpx calls (imgbb) are mocked with `respx`. `asyncio_mode = "auto"`.
+
+## Docs
+
+Design spec: `docs/superpowers/specs/2026-06-14-ranking-reverse-search-design.md`.

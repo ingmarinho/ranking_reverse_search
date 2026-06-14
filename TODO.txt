@@ -1,0 +1,5 @@
+fix trimming code
+move download sections to its own standalone section
+fix picker UI, make it make more sense.
+allow for multi download
+install js solver (deno)
