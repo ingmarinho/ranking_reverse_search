@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS jobs (
-  id              INTEGER PRIMARY KEY,
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
   url             TEXT NOT NULL,
   title           TEXT,
   duration_sec    REAL,

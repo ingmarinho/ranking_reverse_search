@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import subprocess
 from pathlib import Path
 from typing import Callable
 
 from nicegui import ui
 
-from rrs.pipeline.frames import extract_evenly_spaced
+from rrs.pipeline.frames import extract_evenly_spaced, get_video_dimensions
 from rrs.pipeline.jobs import job_paths
+from rrs.pipeline.trim import TrimError, trim_clip
 from rrs.store.db import Database, Scene
 from rrs.ui.components import file_url
 
@@ -17,12 +20,13 @@ async def open_frame_picker(
     db: Database, data_dir: Path, job_id: int, scene: Scene,
     on_close: Callable[[], None],
 ) -> None:
-    """Show modal grid of CANDIDATE_COUNT frames; click to toggle selection."""
+    """Show selected frames + grid of CANDIDATE_COUNT candidates.
+    Click a selected frame to remove it. Click a candidate to add (or remove if
+    already selected). DONE closes the modal and reloads the page."""
     paths = job_paths(data_dir, job_id)
     cand_dir = paths.frames_dir / str(scene.idx) / "candidates"
 
     if not cand_dir.exists() or len(list(cand_dir.glob("cand_*.jpg"))) < CANDIDATE_COUNT:
-        import asyncio
         await asyncio.to_thread(
             extract_evenly_spaced,
             paths.source,
@@ -32,6 +36,9 @@ async def open_frame_picker(
             cand_dir,
         )
 
+    aspect_w, aspect_h = get_video_dimensions(paths.source)
+    cell_style = f'style="aspect-ratio: {aspect_w} / {aspect_h}"'
+
     candidates = sorted(cand_dir.glob("cand_*.jpg"))
     span = max(1, scene.end_frame - scene.start_frame)
     candidate_meta = [
@@ -39,45 +46,96 @@ async def open_frame_picker(
         for i, p in enumerate(candidates)
     ]
 
-    existing_frames = db.list_frames(scene.id)
-    by_frame_number = {f.frame_number: f for f in existing_frames}
-
     with ui.dialog().props("persistent").classes("rrs-modal-backdrop") as dialog:
         with ui.element("div").classes("rrs-modal"):
             ui.html('<div class="rrs-label" style="margin-bottom:14px">SELECT FRAMES</div>')
-            with ui.element("div").classes("rrs-grid-9"):
-                for frame_number, path in candidate_meta:
-                    existing = by_frame_number.get(frame_number)
-                    selected = bool(existing and existing.is_selected)
-                    url = file_url(path, data_dir)
-                    sel_cls = " selected" if selected else ""
-                    html = (
-                        f'<div class="rrs-frame{sel_cls}" data-fn="{frame_number}">'
-                        f'  <img src="{url}">'
-                        f'</div>'
-                    )
-                    el = ui.html(html)
+            body = ui.column().classes("w-full").style("gap:18px")
 
-                    def _toggle(_, fn=frame_number, p=path):
-                        _toggle_selection(db, scene, fn, p)
-                        on_close()
-                        dialog.close()
-                        ui.navigate.reload()
+            @ui.refreshable
+            def _contents() -> None:
+                selected = [f for f in db.list_frames(scene.id) if f.is_selected]
+                ord_by_fn = {f.frame_number: idx for idx, f in enumerate(selected)}
 
-                    el.on("click", _toggle)
-            with ui.element("div").style("text-align:right; margin-top: 18px"):
-                ui.button("CLOSE", on_click=lambda: (dialog.close(), on_close())).classes("rrs-btn")
+                # Currently selected row
+                ui.html(
+                    '<div class="rrs-label" style="margin-bottom:6px">'
+                    f'CURRENTLY SELECTED · {len(selected)} — click × to remove'
+                    '</div>'
+                )
+                if selected:
+                    with ui.element("div").classes("rrs-frame-strip"):
+                        for idx, f in enumerate(selected):
+                            url = file_url(f.path, data_dir)
+                            html_str = (
+                                f'<div class="rrs-frame selected removable" {cell_style}>'
+                                f'  <span class="rrs-ord">{idx+1:02d}</span>'
+                                f'  <span class="rrs-remove" title="remove">×</span>'
+                                f'  <img src="{url}">'
+                                f'</div>'
+                            )
+                            el = ui.html(html_str)
+
+                            def _remove(_, fid=f.id):
+                                db.set_frame_selected(fid, False)
+                                _contents.refresh()
+
+                            el.on("click", _remove)
+                else:
+                    ui.html('<div class="rrs-meta">no frames selected</div>')
+
+                # Candidate grid
+                ui.html(
+                    '<div class="rrs-label" style="margin-top:6px; margin-bottom:6px">'
+                    'CANDIDATES — click to add'
+                    '</div>'
+                )
+                with ui.element("div").classes("rrs-grid-9"):
+                    for frame_number, path in candidate_meta:
+                        ordinal = ord_by_fn.get(frame_number)
+                        is_sel = ordinal is not None
+                        url = file_url(path, data_dir)
+                        sel_cls = " selected" if is_sel else ""
+                        ord_html = (
+                            f'<span class="rrs-ord">{ordinal+1:02d}</span>'
+                            if is_sel else ""
+                        )
+                        html_str = (
+                            f'<div class="rrs-frame{sel_cls}" data-fn="{frame_number}" {cell_style}>'
+                            f'  {ord_html}'
+                            f'  <img src="{url}">'
+                            f'</div>'
+                        )
+                        el = ui.html(html_str)
+
+                        def _toggle(_, fn=frame_number, p=path):
+                            _toggle_selection(db, scene, fn, p)
+                            _contents.refresh()
+
+                        el.on("click", _toggle)
+
+            with body:
+                _contents()
+
+            with ui.element("div").style(
+                "text-align:right; margin-top: 18px"
+            ):
+                def _done() -> None:
+                    dialog.close()
+                    on_close()
+                    ui.navigate.reload()
+
+                ui.button("DONE", on_click=_done).classes("rrs-btn rrs-btn-primary")
     dialog.open()
 
 
 def _toggle_selection(db: Database, scene: Scene, frame_number: int, path: Path) -> None:
     """Toggle is_selected for the candidate at frame_number. Inserts a frames row if new."""
-    existing = [f for f in db.list_frames(scene.id) if f.frame_number == frame_number]
-    if existing:
-        f = existing[0]
-        db.set_frame_selected(f.id, not f.is_selected)
-        return
-    next_ord = max((f.ordinal for f in db.list_frames(scene.id)), default=-1) + 1
+    frames = db.list_frames(scene.id)
+    for f in frames:
+        if f.frame_number == frame_number:
+            db.set_frame_selected(f.id, not f.is_selected)
+            return
+    next_ord = max((f.ordinal for f in frames), default=-1) + 1
     db.insert_frame(
         scene_id=scene.id, ordinal=next_ord, frame_number=frame_number,
         path=str(path), is_selected=True,
@@ -91,7 +149,6 @@ async def open_trim_modal(
     if src is None or not src.path:
         return
 
-    import subprocess
     try:
         probe = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -134,10 +191,6 @@ async def open_trim_modal(
                 end_in = ui.number(label="END (s)", value=round(initial_end, 3), format="%.3f").classes("rrs-input")
 
             async def on_save() -> None:
-                from rrs.pipeline.jobs import job_paths
-                from rrs.pipeline.trim import TrimError, trim_clip
-                import asyncio
-
                 a = float(start_in.value)
                 b = float(end_in.value)
                 if b <= a:

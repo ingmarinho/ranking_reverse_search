@@ -108,6 +108,63 @@ body::before {
 }
 .rrs-btn-primary:hover { background: #ffa15a; border-color: #ffa15a; color: #0d0c0a; }
 
+/* Quasar button overrides — Quasar's q-btn paints its own background and
+   text color via deep inner spans. Defeat with !important targeting the
+   q-btn class chain. */
+.q-btn.rrs-btn {
+  background: transparent !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  min-height: unset !important;
+  padding: 8px 14px !important;
+  font-family: "IBM Plex Mono", ui-monospace, monospace !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  box-shadow: none !important;
+  transition: border-color 120ms linear, color 120ms linear, background 120ms linear !important;
+}
+.q-btn.rrs-btn .q-btn__content,
+.q-btn.rrs-btn .q-btn__content > * { color: inherit !important; }
+.q-btn.rrs-btn:hover {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+.q-btn.rrs-btn:hover .q-btn__content { color: var(--accent) !important; }
+.q-btn.rrs-btn .q-focus-helper,
+.q-btn.rrs-btn .q-ripple { display: none !important; }
+
+.q-btn.rrs-btn-primary {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--bg) !important;
+}
+.q-btn.rrs-btn-primary .q-btn__content { color: var(--bg) !important; }
+.q-btn.rrs-btn-primary:hover {
+  background: #ffa15a !important;
+  border-color: #ffa15a !important;
+  color: var(--bg) !important;
+}
+.q-btn.rrs-btn-primary:hover .q-btn__content { color: var(--bg) !important; }
+
+/* Quasar input field — kill the underline/highlight, keep our hairline. */
+.q-field--standard .q-field__control::before,
+.q-field--standard .q-field__control::after {
+  display: none !important;
+}
+.q-field__native { color: var(--text) !important; }
+.q-field__label { color: var(--text-dim) !important; }
+.q-field { font-family: inherit !important; }
+
+/* Input element styled like our terminal-y input regardless of Quasar wrapping. */
+.rrs-input input {
+  background: transparent !important;
+  color: var(--text) !important;
+  font-family: inherit !important;
+  font-size: 14px !important;
+}
+
 .rrs-engine-chip::before { content: "▸ "; }
 .rrs-engine-chip[data-status="todo"]::before { content: ""; }
 
@@ -116,16 +173,18 @@ body::before {
 .rrs-frame-strip {
   display: flex;
   gap: 8px;
-  align-items: stretch;
+  align-items: flex-start;
 }
 .rrs-frame {
   position: relative;
-  width: 120px; height: 68px;
+  height: 140px;          /* uniform strip height; width derived from aspect-ratio */
+  aspect-ratio: 16 / 9;   /* fallback if no inline aspect-ratio is set */
   background: var(--surface);
   border: 1px solid var(--border);
   overflow: hidden;
   cursor: pointer;
   transition: border-color 80ms linear;
+  flex: 0 0 auto;
 }
 .rrs-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .rrs-frame.selected { border: 2px solid var(--accent); }
@@ -135,9 +194,21 @@ body::before {
   font-weight: 700; font-size: 10px;
   padding: 2px 6px;
   letter-spacing: 0.04em;
+  z-index: 1;
 }
+.rrs-frame .rrs-remove {
+  position: absolute; top: 0; right: 0;
+  background: var(--danger); color: var(--bg);
+  font-weight: 700; font-size: 14px;
+  padding: 0 8px;
+  line-height: 1.6;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 120ms linear;
+}
+.rrs-frame.removable:hover { border-color: var(--danger) !important; }
+.rrs-frame.removable:hover .rrs-remove { opacity: 1; }
 .rrs-frame-add {
-  width: 60px;
   display: flex; align-items: center; justify-content: center;
   color: var(--text-dim);
   font-size: 18px;
@@ -168,7 +239,20 @@ body::before {
 .rrs-scene-range { color: var(--text); }
 .rrs-scene-delta { color: var(--text-dim); }
 
-.rrs-engines { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.rrs-engines { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: stretch; }
+
+.rrs-engine-tag {
+  display: inline-flex;
+  align-items: center;
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 0 10px;
+  min-width: 36px;
+  justify-content: center;
+}
 
 .rrs-source-row {
   display: flex; gap: 10px; align-items: stretch; margin-top: 14px;
@@ -236,7 +320,11 @@ body::before {
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
 }
-.rrs-grid-9 .rrs-frame { width: 100%; height: 0; padding-bottom: 56.25%; }
+.rrs-grid-9 .rrs-frame {
+  width: 100%;
+  height: auto;                 /* width-driven cells in the picker */
+  aspect-ratio: 16 / 9;         /* fallback if inline aspect-ratio missing */
+}
 
 /* Page container */
 

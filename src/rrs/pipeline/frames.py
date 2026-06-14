@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 import cv2
@@ -7,6 +8,24 @@ import cv2
 
 class FrameExtractError(RuntimeError):
     pass
+
+
+@lru_cache(maxsize=32)
+def get_video_dimensions(video_path: Path) -> tuple[int, int]:
+    """Return (width, height) of the video. Falls back to (16, 9) if probe fails.
+
+    Memoized by path: each source video is probed at most once per process.
+    Cache is fine because source files under data/jobs/<id>/ are written once
+    and never overwritten in place."""
+    cap = cv2.VideoCapture(str(video_path))
+    try:
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    finally:
+        cap.release()
+    if w <= 0 or h <= 0:
+        return (16, 9)
+    return (w, h)
 
 
 def extract_frame(video_path: Path, frame_number: int, out_path: Path) -> Path:

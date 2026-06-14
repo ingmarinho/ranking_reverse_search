@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 from pathlib import Path
 from typing import Callable
 
 from nicegui import ui
 
 from rrs.config import Config
-from rrs.pipeline.jobs import run_pre_interactive_pipeline
+from rrs.pipeline.download import DownloadError, download_video
+from rrs.pipeline.engines import get_engine
+from rrs.pipeline.frames import get_video_dimensions
+from rrs.pipeline.hosting import ImgbbError, upload_image
+from rrs.pipeline.jobs import job_paths, run_pre_interactive_pipeline
 from rrs.store.db import Database, Job, JobStatus, Scene
+from rrs.ui.components import render_scene_card
+from rrs.ui.modals import open_frame_picker, open_trim_modal
 
 GetDb = Callable[[], Database]
 GetCfg = Callable[[], Config]
@@ -91,7 +98,6 @@ def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
             # NOTE: resume re-runs the current stage from scratch. If the prior
             # worker died mid-write (rare), the user should START OVER instead.
             def _resume():
-                import asyncio
                 asyncio.create_task(_run_pipeline(db, cfg, job.id))
                 ui.navigate.reload()
             ui.button("RESUME", on_click=_resume).classes("rrs-btn rrs-btn-primary")
@@ -103,8 +109,6 @@ def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
 
 
 def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
-    from rrs.ui.components import render_scene_card
-
     with ui.element("div").classes("rrs-meta"):
         ui.html(
             f'<div>{(job.title or "Untitled")} — '
@@ -115,45 +119,33 @@ def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
     if cfg.imgbb_api_key is None:
         ui.html('<div class="rrs-error">IMGBB_API_KEY not set — engine buttons disabled</div>')
 
+    aspect = get_video_dimensions(Path(job.source_path)) if job.source_path else (16, 9)
     scenes = db.list_scenes(job.id)
     for scene in scenes:
         render_scene_card(
             db=db, data_dir=cfg.data_dir, scene=scene, total_scenes=len(scenes),
+            aspect=aspect,
             on_open_frame_picker=lambda s: _open_frame_picker(db, cfg, s),
             on_open_trim=lambda s: _open_trim(db, cfg, s),
             on_search_click=lambda f, eid: _do_reverse_search(db, cfg, f, eid),
         )
 
 
-# Placeholder handlers — filled in by later tasks.
-def _open_frame_picker(db: Database, cfg: Config, scene: Scene) -> None:
-    from rrs.ui.modals import open_frame_picker
-
+async def _open_frame_picker(db: Database, cfg: Config, scene: Scene) -> None:
     job = _find_active_job(db)
     if job is None:
         return
-    asyncio.create_task(
-        open_frame_picker(db, cfg.data_dir, job.id, scene, on_close=lambda: None)
-    )
+    await open_frame_picker(db, cfg.data_dir, job.id, scene, on_close=lambda: None)
 
 
-def _open_trim(db: Database, cfg: Config, scene: Scene) -> None:
-    from rrs.ui.modals import open_trim_modal
+async def _open_trim(db: Database, cfg: Config, scene: Scene) -> None:
     job = _find_active_job(db)
     if job is None:
         return
-    asyncio.create_task(open_trim_modal(db, cfg.data_dir, job.id, scene))
+    await open_trim_modal(db, cfg.data_dir, job.id, scene)
 
 
-def _active_job_id(db) -> int | None:
-    job = _find_active_job(db)
-    return job.id if job else None
-
-
-def _do_reverse_search(db: Database, cfg: Config, frame, engine_id: str) -> None:
-    from rrs.pipeline.engines import get_engine
-    from rrs.pipeline.hosting import ImgbbError, upload_image
-
+async def _do_reverse_search(db: Database, cfg: Config, frame, engine_id: str) -> None:
     engine = get_engine(engine_id)
     if engine is None or engine.status != "ready":
         ui.notify(f"{engine_id} is not implemented yet", type="warning")
@@ -162,36 +154,27 @@ def _do_reverse_search(db: Database, cfg: Config, frame, engine_id: str) -> None
         ui.notify("IMGBB_API_KEY not set", type="negative")
         return
 
-    async def _go() -> None:
-        fresh = next((f for f in db.list_frames(frame.scene_id) if f.id == frame.id), None)
-        if fresh is None:
-            ui.notify("frame missing", type="negative")
+    if frame.imgbb_url:
+        image_url = frame.imgbb_url
+    else:
+        try:
+            image_url = await asyncio.to_thread(
+                upload_image, Path(frame.path), cfg.imgbb_api_key
+            )
+        except ImgbbError as exc:
+            ui.notify(f"imgbb: {exc}", type="negative")
             return
-        if fresh.imgbb_url:
-            image_url = fresh.imgbb_url
-        else:
-            try:
-                image_url = await asyncio.to_thread(
-                    upload_image, Path(fresh.path), cfg.imgbb_api_key
-                )
-            except ImgbbError as exc:
-                ui.notify(f"imgbb: {exc}", type="negative")
-                return
-            db.set_frame_imgbb_url(fresh.id, image_url)
-        url = engine.search_url(image_url)
-        if url is None:
-            ui.notify(f"{engine_id} not searchable", type="warning")
-            return
-        ui.run_javascript(f"window.open({url!r}, '_blank')")
-
-    asyncio.create_task(_go())
+        db.set_frame_imgbb_url(frame.id, image_url)
+    url = engine.search_url(image_url)
+    if url is None:
+        ui.notify(f"{engine_id} not searchable", type="warning")
+        return
+    ui.run_javascript(f"window.open({url!r}, '_blank')")
 
 
-async def download_source_for_scene(db: Database, data_dir, scene_id: int, url: str) -> None:
-    from rrs.pipeline.download import DownloadError, download_video
-    from rrs.pipeline.jobs import job_paths
-
-    scene = next((s for s in db.list_scenes(_active_job_id(db) or -1) if s.id == scene_id), None)
+async def download_source_for_scene(db: Database, data_dir: Path, scene_id: int, url: str) -> None:
+    job = _find_active_job(db)
+    scene = next((s for s in db.list_scenes(job.id) if s.id == scene_id), None) if job else None
     if scene is None:
         ui.notify("scene not found", type="negative")
         return
@@ -201,9 +184,7 @@ async def download_source_for_scene(db: Database, data_dir, scene_id: int, url: 
 
     src_id = db.upsert_source(scene_id=scene.id, url=url)
     try:
-        result = await asyncio.to_thread(
-            download_video, url, out, None
-        )
+        result = await asyncio.to_thread(download_video, url, out, None)
     except DownloadError as exc:
         ui.notify(f"yt-dlp: {exc}", type="negative")
         return
@@ -223,8 +204,6 @@ def _render_progress(job: Job) -> None:
 
 
 def _start_over(db: Database, data_dir: Path, job_id: int) -> None:
-    import shutil
-    from rrs.pipeline.jobs import job_paths
     paths = job_paths(data_dir, job_id)
     if paths.root.exists():
         shutil.rmtree(paths.root, ignore_errors=True)

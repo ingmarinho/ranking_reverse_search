@@ -77,10 +77,12 @@ async def run_pre_interactive_pipeline(
         scene_rows = db.list_scenes(job_id)
 
         _set_status(db, job_id, JobStatus.EXTRACTING_FRAMES, on_status)
-        for s, row in zip(scenes, scene_rows):
-            scene_dir = paths.frames_dir / str(s.idx)
-            out = scene_dir / "0.jpg"
-            await asyncio.to_thread(extract_frame, paths.source, s.start_frame, out)
+        out_paths = [paths.frames_dir / str(s.idx) / "0.jpg" for s in scenes]
+        await asyncio.gather(*(
+            asyncio.to_thread(extract_frame, paths.source, s.start_frame, out)
+            for s, out in zip(scenes, out_paths)
+        ))
+        for s, row, out in zip(scenes, scene_rows, out_paths):
             db.insert_frame(
                 scene_id=row.id, ordinal=0, frame_number=s.start_frame,
                 path=str(out), is_selected=True,
