@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Callable
 
 from nicegui import ui
@@ -120,12 +121,70 @@ def _open_trim(db, cfg, scene):
     ui.notify("trim modal — Task 17", type="warning")
 
 
-def _do_reverse_search(db, cfg, frame, engine_id):
-    ui.notify("reverse search — Task 16", type="warning")
+def _active_job_id(db) -> int | None:
+    job = _find_active_job(db)
+    return job.id if job else None
 
 
-async def download_source_for_scene(db, data_dir, scene_id, url):
-    ui.notify("source download — Task 16", type="warning")
+def _do_reverse_search(db: Database, cfg: Config, frame, engine_id: str) -> None:
+    from rrs.pipeline.engines import get_engine
+    from rrs.pipeline.hosting import ImgbbError, upload_image
+
+    engine = get_engine(engine_id)
+    if engine is None or engine.status != "ready":
+        ui.notify(f"{engine_id} is not implemented yet", type="warning")
+        return
+    if cfg.imgbb_api_key is None:
+        ui.notify("IMGBB_API_KEY not set", type="negative")
+        return
+
+    async def _go() -> None:
+        fresh = next((f for f in db.list_frames(frame.scene_id) if f.id == frame.id), None)
+        if fresh is None:
+            ui.notify("frame missing", type="negative")
+            return
+        if fresh.imgbb_url:
+            image_url = fresh.imgbb_url
+        else:
+            try:
+                image_url = await asyncio.to_thread(
+                    upload_image, Path(fresh.path), cfg.imgbb_api_key
+                )
+            except ImgbbError as exc:
+                ui.notify(f"imgbb: {exc}", type="negative")
+                return
+            db.set_frame_imgbb_url(fresh.id, image_url)
+        url = engine.search_url(image_url)
+        if url is None:
+            ui.notify(f"{engine_id} not searchable", type="warning")
+            return
+        ui.run_javascript(f"window.open({url!r}, '_blank')")
+
+    asyncio.create_task(_go())
+
+
+async def download_source_for_scene(db: Database, data_dir, scene_id: int, url: str) -> None:
+    from rrs.pipeline.download import DownloadError, download_video
+    from rrs.pipeline.jobs import job_paths
+
+    scene = next((s for s in db.list_scenes(_active_job_id(db) or -1) if s.id == scene_id), None)
+    if scene is None:
+        ui.notify("scene not found", type="negative")
+        return
+    paths = job_paths(data_dir, scene.job_id)
+    paths.sources_dir.mkdir(parents=True, exist_ok=True)
+    out = paths.sources_dir / f"{scene.idx}.mp4"
+
+    src_id = db.upsert_source(scene_id=scene.id, url=url)
+    try:
+        result = await asyncio.to_thread(
+            download_video, url, out, None
+        )
+    except DownloadError as exc:
+        ui.notify(f"yt-dlp: {exc}", type="negative")
+        return
+    db.set_source_downloaded(src_id, path=str(result.path))
+    ui.notify("source downloaded", type="positive")
 
 
 def _render_progress(job: Job) -> None:
