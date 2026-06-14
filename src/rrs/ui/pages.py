@@ -7,7 +7,7 @@ from nicegui import ui
 
 from rrs.config import Config
 from rrs.pipeline.jobs import run_pre_interactive_pipeline
-from rrs.store.db import Database, Job, JobStatus
+from rrs.store.db import Database, Job, JobStatus, Scene
 
 GetDb = Callable[[], Database]
 GetCfg = Callable[[], Config]
@@ -105,8 +105,15 @@ def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
 
 
 # Placeholder handlers — filled in by later tasks.
-def _open_frame_picker(db, cfg, scene):
-    ui.notify("frame picker — Task 15", type="warning")
+def _open_frame_picker(db: Database, cfg: Config, scene: Scene) -> None:
+    from rrs.ui.modals import open_frame_picker
+
+    job = _find_active_job(db)
+    if job is None:
+        return
+    asyncio.create_task(
+        open_frame_picker(db, cfg.data_dir, job.id, scene, on_close=lambda: None)
+    )
 
 
 def _open_trim(db, cfg, scene):
