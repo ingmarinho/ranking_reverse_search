@@ -117,8 +117,12 @@ def _open_frame_picker(db: Database, cfg: Config, scene: Scene) -> None:
     )
 
 
-def _open_trim(db, cfg, scene):
-    ui.notify("trim modal — Task 17", type="warning")
+def _open_trim(db: Database, cfg: Config, scene: Scene) -> None:
+    from rrs.ui.modals import open_trim_modal
+    job = _find_active_job(db)
+    if job is None:
+        return
+    asyncio.create_task(open_trim_modal(db, cfg.data_dir, job.id, scene))
 
 
 def _active_job_id(db) -> int | None:

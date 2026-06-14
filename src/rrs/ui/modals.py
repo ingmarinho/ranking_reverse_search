@@ -80,3 +80,77 @@ def _toggle_selection(db: Database, scene: Scene, frame_number: int, path: Path)
         scene_id=scene.id, ordinal=next_ord, frame_number=frame_number,
         path=str(path), is_selected=True,
     )
+
+
+async def open_trim_modal(
+    db: Database, data_dir: Path, job_id: int, scene: Scene,
+) -> None:
+    src = db.get_source(scene.id)
+    if src is None or not src.path:
+        return
+
+    import subprocess
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=nw=1:nk=1", src.path],
+        capture_output=True, text=True,
+    )
+    try:
+        source_duration = float(probe.stdout.strip())
+    except ValueError:
+        ui.notify("could not read source duration", type="negative")
+        return
+
+    scene_duration = scene.end_sec - scene.start_sec
+    midpoint = source_duration / 2.0
+    default_start = max(0.0, midpoint - scene_duration / 2.0)
+    default_end = min(source_duration, midpoint + scene_duration / 2.0)
+
+    initial_start = src.trim_start_sec if src.trim_start_sec is not None else default_start
+    initial_end = src.trim_end_sec if src.trim_end_sec is not None else default_end
+
+    video_url = file_url(src.path, data_dir)
+
+    with ui.dialog().props("persistent").classes("rrs-modal-backdrop") as dialog:
+        with ui.element("div").classes("rrs-modal"):
+            ui.html('<div class="rrs-label" style="margin-bottom:14px">TRIM CLIP</div>')
+            ui.html(
+                f'<video controls src="{video_url}" '
+                f'style="width:100%; max-height:50vh; background:black"></video>'
+            )
+            ui.html(
+                f'<div class="rrs-meta rrs-timecode" style="margin-top:10px">'
+                f'source duration: {source_duration:.2f}s  ·  scene Δ {scene_duration:.2f}s'
+                f'</div>'
+            )
+            with ui.row().classes("w-full").style("gap:12px; margin-top:14px"):
+                start_in = ui.number(label="START (s)", value=round(initial_start, 3), format="%.3f").classes("rrs-input")
+                end_in = ui.number(label="END (s)", value=round(initial_end, 3), format="%.3f").classes("rrs-input")
+
+            async def on_save() -> None:
+                from rrs.pipeline.jobs import job_paths
+                from rrs.pipeline.trim import TrimError, trim_clip
+                import asyncio
+
+                a = float(start_in.value)
+                b = float(end_in.value)
+                if b <= a:
+                    ui.notify("END must be greater than START", type="negative")
+                    return
+                paths = job_paths(data_dir, job_id)
+                paths.clips_dir.mkdir(parents=True, exist_ok=True)
+                out = paths.clips_dir / f"{scene.idx}.mp4"
+                try:
+                    await asyncio.to_thread(trim_clip, Path(src.path), a, b, out)
+                except TrimError as exc:
+                    ui.notify(f"ffmpeg: {exc}", type="negative")
+                    return
+                db.set_source_clip(src.id, trim_start_sec=a, trim_end_sec=b, clip_path=str(out))
+                ui.notify("clip saved", type="positive")
+                dialog.close()
+                ui.navigate.reload()
+
+            with ui.row().style("justify-content: flex-end; gap: 10px; margin-top: 18px"):
+                ui.button("CANCEL", on_click=dialog.close).classes("rrs-btn")
+                ui.button("SAVE CLIP", on_click=on_save).classes("rrs-btn rrs-btn-primary")
+    dialog.open()
