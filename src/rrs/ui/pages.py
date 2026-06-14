@@ -80,9 +80,45 @@ def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
         ui.timer(1.0, lambda: ui.navigate.reload(), once=True)
         return
     if status == JobStatus.INTERACTIVE:
-        ui.html('<div class="rrs-meta">Pipeline complete. Scene list view: see Task 14.</div>')
-        ui.button("START OVER", on_click=lambda: _start_over(db, job.id)).classes("rrs-btn")
+        _render_scene_list(db, cfg, job)
         return
+
+
+def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
+    from rrs.ui.components import render_scene_card
+
+    with ui.element("div").classes("rrs-meta"):
+        ui.html(
+            f'<div>{(job.title or "Untitled")} — '
+            f'{(job.duration_sec or 0):.1f}s</div>'
+        )
+    ui.button("START OVER", on_click=lambda: _start_over(db, job.id)).classes("rrs-btn")
+
+    scenes = db.list_scenes(job.id)
+    for scene in scenes:
+        render_scene_card(
+            db=db, data_dir=cfg.data_dir, scene=scene, total_scenes=len(scenes),
+            on_open_frame_picker=lambda s: _open_frame_picker(db, cfg, s),
+            on_open_trim=lambda s: _open_trim(db, cfg, s),
+            on_search_click=lambda f, eid: _do_reverse_search(db, cfg, f, eid),
+        )
+
+
+# Placeholder handlers — filled in by later tasks.
+def _open_frame_picker(db, cfg, scene):
+    ui.notify("frame picker — Task 15", type="warning")
+
+
+def _open_trim(db, cfg, scene):
+    ui.notify("trim modal — Task 17", type="warning")
+
+
+def _do_reverse_search(db, cfg, frame, engine_id):
+    ui.notify("reverse search — Task 16", type="warning")
+
+
+async def download_source_for_scene(db, data_dir, scene_id, url):
+    ui.notify("source download — Task 16", type="warning")
 
 
 def _render_progress(job: Job) -> None:
