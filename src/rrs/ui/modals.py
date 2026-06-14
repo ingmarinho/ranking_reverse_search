@@ -22,12 +22,14 @@ async def open_frame_picker(
     cand_dir = paths.frames_dir / str(scene.idx) / "candidates"
 
     if not cand_dir.exists() or len(list(cand_dir.glob("cand_*.jpg"))) < CANDIDATE_COUNT:
-        extract_evenly_spaced(
-            video_path=paths.source,
-            start_frame=scene.start_frame,
-            end_frame=scene.end_frame,
-            count=CANDIDATE_COUNT,
-            out_dir=cand_dir,
+        import asyncio
+        await asyncio.to_thread(
+            extract_evenly_spaced,
+            paths.source,
+            scene.start_frame,
+            scene.end_frame,
+            CANDIDATE_COUNT,
+            cand_dir,
         )
 
     candidates = sorted(cand_dir.glob("cand_*.jpg"))
@@ -90,11 +92,15 @@ async def open_trim_modal(
         return
 
     import subprocess
-    probe = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=nw=1:nk=1", src.path],
-        capture_output=True, text=True,
-    )
+    try:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", src.path],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        ui.notify("ffprobe not on PATH", type="negative")
+        return
     try:
         source_duration = float(probe.stdout.strip())
     except ValueError:

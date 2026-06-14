@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS sources (
   trim_start_sec  REAL,
   trim_end_sec    REAL,
   clip_path       TEXT,
-  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(scene_id)
 );
 
 CREATE TABLE IF NOT EXISTS settings (

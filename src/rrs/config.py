@@ -22,10 +22,12 @@ def load_config(probe_ffmpeg: bool = True) -> Config:
     data_dir = Path(os.environ.get("DATA_DIR", "./data")).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    if probe_ffmpeg and shutil.which("ffmpeg") is None:
-        raise MissingDependencyError(
-            "ffmpeg not found on PATH. Install it (e.g. `brew install ffmpeg`)."
-        )
+    if probe_ffmpeg:
+        for binary in ("ffmpeg", "ffprobe"):
+            if shutil.which(binary) is None:
+                raise MissingDependencyError(
+                    f"{binary} not found on PATH. Install ffmpeg (e.g. `brew install ffmpeg`)."
+                )
 
     return Config(
         data_dir=data_dir,

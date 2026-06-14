@@ -75,7 +75,7 @@ def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
     status = job.status
     if status == JobStatus.FAILED:
         ui.html(f'<div class="rrs-error">{(job.error or "Unknown error")}</div>')
-        ui.button("START OVER", on_click=lambda: _start_over(db, job.id)).classes("rrs-btn")
+        ui.button("START OVER", on_click=lambda: _start_over(db, cfg.data_dir, job.id)).classes("rrs-btn")
         return
     if status in (
         JobStatus.DOWNLOADING,
@@ -95,7 +95,7 @@ def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
                 asyncio.create_task(_run_pipeline(db, cfg, job.id))
                 ui.navigate.reload()
             ui.button("RESUME", on_click=_resume).classes("rrs-btn rrs-btn-primary")
-            ui.button("START OVER", on_click=lambda: _start_over(db, job.id)).classes("rrs-btn")
+            ui.button("START OVER", on_click=lambda: _start_over(db, cfg.data_dir, job.id)).classes("rrs-btn")
         return
     if status == JobStatus.INTERACTIVE:
         _render_scene_list(db, cfg, job)
@@ -110,7 +110,7 @@ def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
             f'<div>{(job.title or "Untitled")} — '
             f'{(job.duration_sec or 0):.1f}s</div>'
         )
-    ui.button("START OVER", on_click=lambda: _start_over(db, job.id)).classes("rrs-btn")
+    ui.button("START OVER", on_click=lambda: _start_over(db, cfg.data_dir, job.id)).classes("rrs-btn")
 
     if cfg.imgbb_api_key is None:
         ui.html('<div class="rrs-error">IMGBB_API_KEY not set — engine buttons disabled</div>')
@@ -222,11 +222,10 @@ def _render_progress(job: Job) -> None:
     ui.html(f'<div class="rrs-stage-label">{label}</div>')
 
 
-def _start_over(db: Database, job_id: int) -> None:
+def _start_over(db: Database, data_dir: Path, job_id: int) -> None:
     import shutil
     from rrs.pipeline.jobs import job_paths
-    from rrs.main import get_cfg
-    paths = job_paths(get_cfg().data_dir, job_id)
+    paths = job_paths(data_dir, job_id)
     if paths.root.exists():
         shutil.rmtree(paths.root, ignore_errors=True)
     db.delete_job(job_id)
