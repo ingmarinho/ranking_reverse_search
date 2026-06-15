@@ -1,5 +1,12 @@
-fix trimming code
-move download sections to its own standalone section
-fix picker UI, make it make more sense.
-allow for multi download
-install js solver (deno)
+- remove all trimming code. just download the clip.
+- move download sections to its own standalone section (on the right or left side for example), no need for a download section per scene right?
+- fix picker UI, make it make more sense. basically allow for picking max 3 frames per scene, where 1 is required. allow removing from the main menu not just inside the picker menu. allow clicking outside of modal to confirm changes.
+- make image thumbnails bigger inside main overview/menu
+- install js solver (deno)
+- improve UI. especially spacing at the top between start over button, title and first scene outline.
+
+
+also there is a page reload after every change? can this be undone? it shoudl refresh but now every time i change something im abck at the top of the website.
+
+remove all engines apart from google, yandex, bing and tineye, every instance in code too.
+cleanup UI

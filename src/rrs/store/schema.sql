@@ -36,9 +36,6 @@ CREATE TABLE IF NOT EXISTS sources (
   scene_id        INTEGER NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
   url             TEXT NOT NULL,
   path            TEXT,
-  trim_start_sec  REAL,
-  trim_end_sec    REAL,
-  clip_path       TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(scene_id)
 );

@@ -6,7 +6,12 @@ from unittest.mock import patch
 import pytest
 
 from rrs.pipeline.download import DownloadError
-from rrs.pipeline.jobs import job_paths, run_pre_interactive_pipeline
+from rrs.pipeline.jobs import (
+    downloads_dir,
+    job_paths,
+    run_pre_interactive_pipeline,
+    safe_dirname,
+)
 from rrs.store.db import JobStatus, open_db
 
 
@@ -88,4 +93,19 @@ def test_job_paths_layout(tmp_path):
     assert paths.source == paths.root / "source.mp4"
     assert paths.frames_dir == paths.root / "frames"
     assert paths.sources_dir == paths.root / "sources"
-    assert paths.clips_dir == paths.root / "clips"
+
+
+def test_safe_dirname_sanitizes_and_falls_back():
+    assert (
+        safe_dirname("Ranking Best Cheetah Moments #usa", 1) == "Ranking Best Cheetah Moments #usa"
+    )
+    # illegal characters are replaced, whitespace collapsed, trailing dots stripped
+    assert safe_dirname('a/b:c*d?e."', 1) == "a b c d e"
+    assert safe_dirname("   ", 7) == "job-7"
+    assert safe_dirname(None, 9) == "job-9"
+
+
+def test_downloads_dir_layout(tmp_path):
+    d = downloads_dir(tmp_path, "My Video", 3)
+    assert d == tmp_path / "downloads" / "My Video"
+    assert downloads_dir(tmp_path, None, 3) == tmp_path / "downloads" / "job-3"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,7 +21,6 @@ class JobPaths:
     source: Path
     frames_dir: Path
     sources_dir: Path
-    clips_dir: Path
 
 
 def job_paths(data_dir: Path, job_id: int) -> JobPaths:
@@ -30,8 +30,19 @@ def job_paths(data_dir: Path, job_id: int) -> JobPaths:
         source=root / "source.mp4",
         frames_dir=root / "frames",
         sources_dir=root / "sources",
-        clips_dir=root / "clips",
     )
+
+
+def safe_dirname(title: str | None, job_id: int) -> str:
+    """Filesystem-safe folder name from a video title; falls back to job-<id>."""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", title or "").strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).rstrip(". ")
+    return cleaned[:120] if cleaned else f"job-{job_id}"
+
+
+def downloads_dir(data_dir: Path, title: str | None, job_id: int) -> Path:
+    """Convenient, browsable folder for a job's downloaded source clips."""
+    return Path(data_dir) / "downloads" / safe_dirname(title, job_id)
 
 
 def _set_status(db: Database, job_id: int, status: JobStatus, hook: StatusHook | None):

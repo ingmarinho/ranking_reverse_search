@@ -84,6 +84,21 @@ def test_set_frame_imgbb_url(db: Database):
     assert db.list_frames(scene_id)[0].imgbb_url == "https://i.ibb.co/abc.jpg"
 
 
+def test_set_frame_image_updates_and_clears_imgbb_url(db: Database):
+    job_id = db.create_job(url="x")
+    db.insert_scenes(job_id, [(0, 0, 48, 0.0, 2.0)])
+    scene_id = db.list_scenes(job_id)[0].id
+    fid = db.insert_frame(scene_id, 0, 0, "/old.jpg", is_selected=True)
+    db.set_frame_imgbb_url(fid, "https://i.ibb.co/abc.jpg")
+
+    db.set_frame_image(fid, frame_number=25, path="/new.jpg")
+
+    frame = db.list_frames(scene_id)[0]
+    assert frame.frame_number == 25
+    assert frame.path == "/new.jpg"
+    assert frame.imgbb_url is None
+
+
 def test_toggle_frame_selection(db: Database):
     job_id = db.create_job(url="x")
     db.insert_scenes(job_id, [(0, 0, 48, 0.0, 2.0)])
@@ -103,11 +118,11 @@ def test_upsert_source(db: Database):
     assert src.path is None
     db.set_source_downloaded(src.id, path="/data/s.mp4")
     assert db.get_source(sid).path == "/data/s.mp4"
-    db.set_source_clip(src.id, trim_start_sec=1.0, trim_end_sec=3.0, clip_path="/c.mp4")
+    # re-upserting a new url resets the downloaded path
+    db.upsert_source(scene_id=sid, url="https://src.example/other.mp4")
     src = db.get_source(sid)
-    assert src.trim_start_sec == 1.0
-    assert src.trim_end_sec == 3.0
-    assert src.clip_path == "/c.mp4"
+    assert src.url == "https://src.example/other.mp4"
+    assert src.path is None
 
 
 def test_settings_get_and_set(db: Database):

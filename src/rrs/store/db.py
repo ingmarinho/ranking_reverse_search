@@ -55,9 +55,6 @@ class Source:
     scene_id: int
     url: str
     path: str | None
-    trim_start_sec: float | None
-    trim_end_sec: float | None
-    clip_path: str | None
 
 
 def _schema_sql() -> str:
@@ -159,6 +156,17 @@ class Database:
         self._conn.execute("UPDATE frames SET imgbb_url = ? WHERE id = ?", (url, frame_id))
         self._conn.commit()
 
+    def set_frame_image(self, frame_id: int, frame_number: int, path: str) -> None:
+        """Point a frame row at a different extracted frame.
+
+        Clears imgbb_url: the image changed, so any cached imgbb upload is stale
+        and must be re-uploaded on the next reverse search."""
+        self._conn.execute(
+            "UPDATE frames SET frame_number = ?, path = ?, imgbb_url = NULL WHERE id = ?",
+            (frame_number, path, frame_id),
+        )
+        self._conn.commit()
+
     def set_frame_selected(self, frame_id: int, selected: bool) -> None:
         self._conn.execute(
             "UPDATE frames SET is_selected = ? WHERE id = ?", (int(selected), frame_id)
@@ -173,8 +181,7 @@ class Database:
         ).fetchone()
         if existing:
             self._conn.execute(
-                "UPDATE sources SET url = ?, path = NULL, trim_start_sec = NULL,"
-                " trim_end_sec = NULL, clip_path = NULL WHERE id = ?",
+                "UPDATE sources SET url = ?, path = NULL WHERE id = ?",
                 (url, existing["id"]),
             )
             self._conn.commit()
@@ -191,19 +198,6 @@ class Database:
 
     def set_source_downloaded(self, source_id: int, path: str) -> None:
         self._conn.execute("UPDATE sources SET path = ? WHERE id = ?", (path, source_id))
-        self._conn.commit()
-
-    def set_source_clip(
-        self,
-        source_id: int,
-        trim_start_sec: float,
-        trim_end_sec: float,
-        clip_path: str,
-    ) -> None:
-        self._conn.execute(
-            "UPDATE sources SET trim_start_sec = ?, trim_end_sec = ?, clip_path = ? WHERE id = ?",
-            (trim_start_sec, trim_end_sec, clip_path, source_id),
-        )
         self._conn.commit()
 
     # ---- settings ----
@@ -265,9 +259,6 @@ class Database:
             scene_id=r["scene_id"],
             url=r["url"],
             path=r["path"],
-            trim_start_sec=r["trim_start_sec"],
-            trim_end_sec=r["trim_end_sec"],
-            clip_path=r["clip_path"],
         )
 
 

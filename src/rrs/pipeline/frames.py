@@ -44,27 +44,3 @@ def extract_frame(video_path: Path, frame_number: int, out_path: Path) -> Path:
     if not ok:
         raise FrameExtractError(f"failed to write {out_path}")
     return out_path
-
-
-def extract_evenly_spaced(
-    video_path: Path,
-    start_frame: int,
-    end_frame: int,
-    count: int,
-    out_dir: Path,
-) -> list[tuple[int, Path]]:
-    """Extract `count` frames evenly spaced through [start_frame, end_frame).
-
-    Returns list of (frame_number, written_path) in order.
-    """
-    if count < 1:
-        return []
-    span = max(1, end_frame - start_frame)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    results: list[tuple[int, Path]] = []
-    for i in range(count):
-        fn = start_frame + int((i + 0.5) * span / count)
-        path = out_dir / f"cand_{i}.jpg"
-        extract_frame(video_path, fn, path)
-        results.append((fn, path))
-    return results

@@ -13,6 +13,8 @@ from rrs.pipeline.engines import ALL_ENGINES, get_engine
         ("bing", "bing.com"),
         ("tineye", "tineye.com"),
         ("saucenao", "saucenao.com"),
+        ("baidu", "graph.baidu.com"),
+        ("sogou", "pic.sogou.com"),
     ],
 )
 def test_ready_engines_emit_url_with_image(engine_id: str, expected_host: str):
@@ -25,11 +27,20 @@ def test_ready_engines_emit_url_with_image(engine_id: str, expected_host: str):
     assert "i.ibb.co" in url or "%2Fi.ibb.co" in url or "i.ibb.co" in url.lower()
 
 
+def test_baidu_and_sogou_url_encode_image():
+    assert get_engine("baidu").search_url("https://x/y.png") == (
+        "https://graph.baidu.com/details?isfromtoy=1&image=https%3A%2F%2Fx%2Fy.png"
+    )
+    assert get_engine("sogou").search_url("https://x/y.png") == (
+        "https://pic.sogou.com/ris?query=https%3A%2F%2Fx%2Fy.png"
+    )
+
+
 def test_registry_has_stubbed_engines():
     ids = {e.id for e in ALL_ENGINES}
-    for stub in ("baidu", "sogou", "qihoo360", "naver", "lenso", "pimeyes", "karma_decay"):
+    for stub in ("qihoo360", "naver", "lenso", "pimeyes", "karma_decay"):
         assert stub in ids, f"missing stub {stub}"
-    assert all(get_engine(s).status == "todo" for s in ("baidu", "sogou", "naver"))
+    assert all(get_engine(s).status == "todo" for s in ("qihoo360", "naver"))
 
 
 def test_get_engine_unknown_returns_none():
