@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   title           TEXT,
   duration_sec    REAL,
   source_path     TEXT,
+  download_dir    TEXT,
   status          TEXT NOT NULL,
   error           TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))

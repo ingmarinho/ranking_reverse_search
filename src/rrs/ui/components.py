@@ -151,16 +151,7 @@ def _render_download_row(
             url = inp.value.strip()
             if not url:
                 return
-            status.set_content('<span class="rrs-download-busy">downloading…</span>')
-            try:
-                name = await on_download(scene.id, url)
-            except Exception as exc:  # noqa: BLE001 — surface any failure inline
-                msg = html.escape(str(exc))
-                status.set_content(
-                    f'<span class="rrs-download-err" title="{msg}">✗ failed: {msg}</span>'
-                )
-                return
-            status.set_content(_download_status_html(name))
+            await _run_download(lambda: on_download(scene.id, url), status)
 
         with ui.element("div").classes("rrs-download-row"):
             inp = ui.input(value=(src.url if src else ""), placeholder="source url").classes(
@@ -180,3 +171,46 @@ def _download_status_html(path: str | None) -> str:
     name = html.escape(Path(path).name)
     full = html.escape(path)
     return f'<span class="rrs-download-done" title="{full}">✓ downloaded: {name}</span>'
+
+
+async def _run_download(do_download: Callable[[], Awaitable[str]], status, clear=None) -> None:
+    """Run a download, reflecting busy/✓/✗ in the `status` element.
+
+    `do_download()` returns the saved filename or raises; failures are surfaced
+    inline. On success, clears `clear`'s value if given."""
+    status.set_content('<span class="rrs-download-busy">downloading…</span>')
+    try:
+        name = await do_download()
+    except Exception as exc:  # noqa: BLE001 — surface any failure inline
+        msg = html.escape(str(exc))
+        status.set_content(f'<span class="rrs-download-err" title="{msg}">✗ failed: {msg}</span>')
+        return
+    if clear is not None:
+        clear.value = ""
+    status.set_content(_download_status_html(name))
+
+
+def render_extra_downloader(
+    on_download: Callable[[str], Awaitable[str]],
+    on_open_folder: Callable[[], None],
+) -> None:
+    """Bottom-of-page box to download any extra clip into the active job's folder.
+
+    `on_download(url)` downloads the clip and returns its saved filename, or raises.
+    `on_open_folder()` reveals the destination folder.
+    """
+    with ui.element("div").classes("rrs-extra-download"):
+        ui.html('<div class="rrs-label">Download an extra clip</div>')
+
+        async def _go(_=None) -> None:
+            url = inp.value.strip()
+            if not url:
+                return
+            await _run_download(lambda: on_download(url), status, clear=inp)
+
+        with ui.element("div").classes("rrs-download-row"):
+            inp = ui.input(placeholder="paste a video url to download…").classes("rrs-input")
+            html_button("DOWNLOAD", _go)
+            html_button("OPEN FOLDER", on_open_folder)
+
+        status = ui.html("").classes("rrs-download-status")

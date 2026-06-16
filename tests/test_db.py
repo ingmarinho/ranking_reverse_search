@@ -2,19 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 
-import pytest
-
 from rrs.store.db import (
     CropRect,
     Database,
     JobStatus,
     open_db,
 )
-
-
-@pytest.fixture
-def db() -> Database:
-    return open_db(":memory:")
 
 
 def test_create_and_get_job(db: Database):
@@ -187,3 +180,51 @@ def test_foreign_keys_cascade(db: Database):
     with sqlite3.connect(":memory:"):
         pass
     assert db.list_scenes(job_id) == []
+
+
+def test_job_download_dir_defaults_none(db: Database):
+    job_id = db.create_job(url="x")
+    assert db.get_job(job_id).download_dir is None
+
+
+def test_set_and_get_download_dir(db: Database):
+    job_id = db.create_job(url="x")
+    db.set_download_dir(job_id, "/data/downloads/My Video")
+    assert db.get_job(job_id).download_dir == "/data/downloads/My Video"
+    # overwrite semantics: second call replaces the value
+    db.set_download_dir(job_id, "/data/downloads/New Title")
+    assert db.get_job(job_id).download_dir == "/data/downloads/New Title"
+
+
+def test_claimed_download_dirs_empty_when_no_other_jobs(db: Database):
+    job_id = db.create_job(url="x")
+    db.set_download_dir(job_id, "/data/downloads/Solo")
+    assert db.claimed_download_dirs(exclude_job_id=job_id) == set()
+
+
+def test_claimed_download_dirs_excludes_given_job(db: Database):
+    a = db.create_job(url="a")
+    b = db.create_job(url="b")
+    db.set_download_dir(a, "/d/Foo")
+    db.set_download_dir(b, "/d/Bar")
+    # Claims by jobs other than `a`:
+    assert db.claimed_download_dirs(exclude_job_id=a) == {"/d/Bar"}
+    # Jobs with no download_dir contribute nothing:
+    c = db.create_job(url="c")
+    assert db.claimed_download_dirs(exclude_job_id=c) == {"/d/Foo", "/d/Bar"}
+
+
+def test_migration_adds_download_dir_to_legacy_db(tmp_path):
+    path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(str(path))
+    conn.executescript(
+        "CREATE TABLE jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL,"
+        " title TEXT, duration_sec REAL, source_path TEXT, status TEXT NOT NULL,"
+        " error TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));"
+    )
+    conn.commit()
+    conn.close()
+
+    db = open_db(path)
+    cols = {r["name"] for r in db._conn.execute("PRAGMA table_info(jobs)")}
+    assert "download_dir" in cols

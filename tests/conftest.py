@@ -10,6 +10,14 @@ from pathlib import Path
 
 import pytest
 
+from rrs.store.db import Database, open_db
+
+
+@pytest.fixture
+def db() -> Database:
+    """A fresh in-memory database for a test."""
+    return open_db(":memory:")
+
 
 @pytest.fixture(scope="session")
 def synthetic_video(tmp_path_factory) -> Path:

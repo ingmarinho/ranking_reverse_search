@@ -286,6 +286,21 @@ body::before {
 .rrs-download-busy { color: var(--text-dim); }
 .rrs-download-err { color: var(--danger); }
 
+/* Extra-clip downloader: a standalone grouped block at the bottom of the scene
+   list (heading + input/buttons row + status), styled like a scene card so it
+   reads as one unit rather than loose stacked lines. */
+.rrs-extra-download {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  padding: 16px 18px;
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rrs-extra-download .rrs-download-status { margin-top: 0; }
+
 /* Top progress strip */
 
 .rrs-top-progress {
