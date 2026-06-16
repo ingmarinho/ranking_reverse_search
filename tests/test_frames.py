@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import cv2
 import numpy as np
 
+import rrs.pipeline.frames as frames_mod
 from rrs.pipeline.frames import crop_image, extract_frame
 
 
@@ -14,6 +16,34 @@ def test_extract_frame_writes_jpeg(synthetic_video: Path, tmp_path: Path):
     assert out.exists()
     assert out.stat().st_size > 0
     assert out.read_bytes()[:2] == b"\xff\xd8"
+
+
+def test_extract_frame_never_truncates_destination(
+    synthetic_video: Path, tmp_path: Path, monkeypatch
+):
+    # Regression for B3: /_data serves these JPEGs, and a concurrent HTTP response
+    # must never observe a partially-written file (which uvicorn reports as
+    # "Response content shorter than Content-Length"). The destination must hold
+    # the complete previous bytes right up until an atomic swap, never a truncated
+    # in-place rewrite.
+    out = tmp_path / "f.jpg"
+    out.write_bytes(b"OLD-COMPLETE-CONTENT")
+
+    real_replace = os.replace
+    seen: dict = {}
+
+    def spy_replace(src, dst):
+        # Whatever a reader opens at `dst` before the swap is the intact old file.
+        seen["dst_before"] = Path(dst).read_bytes()
+        real_replace(src, dst)
+
+    monkeypatch.setattr(frames_mod.os, "replace", spy_replace)
+    extract_frame(synthetic_video, 12, out)
+
+    assert seen["dst_before"] == b"OLD-COMPLETE-CONTENT"
+    assert out.read_bytes()[:2] == b"\xff\xd8"
+    # No temp artifact left behind next to the destination.
+    assert list(tmp_path.glob("*.tmp")) == []
 
 
 def test_crop_image_crops_to_normalized_bounds(tmp_path: Path):
