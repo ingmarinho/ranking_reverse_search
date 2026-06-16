@@ -13,12 +13,7 @@ from rrs.pipeline.jobs import (
     run_pre_interactive_pipeline,
     safe_dirname,
 )
-from rrs.store.db import JobStatus, open_db
-
-
-@pytest.fixture
-def db():
-    return open_db(":memory:")
+from rrs.store.db import JobStatus
 
 
 @pytest.mark.asyncio

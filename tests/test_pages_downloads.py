@@ -5,20 +5,15 @@ from unittest.mock import patch
 import pytest
 
 from rrs.pipeline.download import DownloadResult
-from rrs.store.db import JobStatus, open_db
+from rrs.store.db import JobStatus
 from rrs.ui.pages import download_extra_clip
-
-
-@pytest.fixture
-def db():
-    return open_db(":memory:")
 
 
 @pytest.mark.asyncio
 async def test_download_extra_clip_numbers_into_job_folder(db, tmp_path):
     job_id = db.create_job(url="ranking")
     db.set_job_source(job_id, title="My Video", duration_sec=1.0, source_path="/s.mp4")
-    db.update_job_status(job_id, JobStatus.INTERACTIVE)
+    db.update_job_status(job_id, JobStatus.INTERACTIVE)  # _find_active_job picks the newest job
 
     def fake_download(url, out_path, max_height, progress_hook=None):
         out_path.parent.mkdir(parents=True, exist_ok=True)

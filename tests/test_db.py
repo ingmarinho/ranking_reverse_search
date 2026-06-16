@@ -2,19 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 
-import pytest
-
 from rrs.store.db import (
     CropRect,
     Database,
     JobStatus,
     open_db,
 )
-
-
-@pytest.fixture
-def db() -> Database:
-    return open_db(":memory:")
 
 
 def test_create_and_get_job(db: Database):
