@@ -334,10 +334,10 @@ body::before {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Frame picker scrubber. The preview holds the full frame; drag a box over it
-   to mark a crop region (drawn as an SVG overlay by interactive_image). */
-/* Wrapper shrink-wraps the displayed image so the crop overlay (absolute,
-   inset:0) is pixel-aligned with it. */
+/* Frame picker scrubber. The preview holds the full frame; a client-side crop
+   overlay (.rrs-crop-layer) sits over it to mark a crop region.
+   Wrapper shrink-wraps the displayed image so the overlay (absolute, inset:0)
+   is pixel-aligned with it. */
 .rrs-crop-wrap {
   position: relative;
   width: fit-content;
