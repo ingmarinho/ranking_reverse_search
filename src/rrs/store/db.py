@@ -23,6 +23,7 @@ class Job:
     title: str | None
     duration_sec: float | None
     source_path: str | None
+    download_dir: str | None
     status: JobStatus
     error: str | None
 
@@ -90,6 +91,9 @@ class Database:
         for col in ("crop_x", "crop_y", "crop_w", "crop_h"):
             if col not in cols:
                 self._conn.execute(f"ALTER TABLE frames ADD COLUMN {col} REAL")
+        job_cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(jobs)")}
+        if "download_dir" not in job_cols:
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN download_dir TEXT")
         self._conn.commit()
 
     # ---- jobs ----
@@ -128,6 +132,18 @@ class Database:
             (title, duration_sec, source_path, job_id),
         )
         self._conn.commit()
+
+    def set_download_dir(self, job_id: int, path: str) -> None:
+        self._conn.execute("UPDATE jobs SET download_dir = ? WHERE id = ?", (path, job_id))
+        self._conn.commit()
+
+    def claimed_download_dirs(self, exclude_job_id: int) -> set[str]:
+        """All non-null download_dir values claimed by jobs other than the given one."""
+        cur = self._conn.execute(
+            "SELECT download_dir FROM jobs WHERE download_dir IS NOT NULL AND id != ?",
+            (exclude_job_id,),
+        )
+        return {r["download_dir"] for r in cur.fetchall()}
 
     def delete_job(self, job_id: int) -> None:
         self._conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
@@ -267,6 +283,7 @@ class Database:
             title=r["title"],
             duration_sec=r["duration_sec"],
             source_path=r["source_path"],
+            download_dir=r["download_dir"],
             status=JobStatus(r["status"]),
             error=r["error"],
         )
