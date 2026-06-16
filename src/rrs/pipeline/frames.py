@@ -44,3 +44,25 @@ def extract_frame(video_path: Path, frame_number: int, out_path: Path) -> Path:
     if not ok:
         raise FrameExtractError(f"failed to write {out_path}")
     return out_path
+
+
+def crop_image(
+    src_path: Path, rect_norm: tuple[float, float, float, float], out_path: Path
+) -> Path:
+    """Write a cropped copy of `src_path` to `out_path`.
+
+    `rect_norm` is (x, y, w, h) as fractions (0..1) of the source image. Pixel
+    bounds are clamped so the crop is always a non-empty region."""
+    img = cv2.imread(str(src_path))
+    if img is None:
+        raise FrameExtractError(f"could not read {src_path}")
+    h, w = img.shape[:2]
+    x, y, cw, ch = rect_norm
+    x0 = max(0, min(w - 1, round(x * w)))
+    y0 = max(0, min(h - 1, round(y * h)))
+    x1 = max(x0 + 1, min(w, round((x + cw) * w)))
+    y1 = max(y0 + 1, min(h, round((y + ch) * h)))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if not cv2.imwrite(str(out_path), img[y0:y1, x0:x1], [cv2.IMWRITE_JPEG_QUALITY, 88]):
+        raise FrameExtractError(f"failed to write {out_path}")
+    return out_path

@@ -13,7 +13,7 @@ from nicegui import ui
 from rrs.config import Config
 from rrs.pipeline.download import download_video
 from rrs.pipeline.engines import get_engine
-from rrs.pipeline.frames import get_video_dimensions
+from rrs.pipeline.frames import crop_image, get_video_dimensions
 from rrs.pipeline.hosting import ImgbbError, upload_image
 from rrs.pipeline.jobs import downloads_dir, job_paths, run_pre_interactive_pipeline
 from rrs.store.db import Database, Frame, Job, JobStatus, Scene
@@ -29,10 +29,7 @@ _INFLIGHT: set[int] = set()
 def register_pages(get_db: GetDb, get_cfg: GetCfg) -> None:
     @ui.page("/")
     async def index() -> None:
-        db = get_db()
-        cfg = get_cfg()
-        active = _find_active_job(db)
-        _render_wizard(db, cfg, active)
+        _render_wizard(get_db(), get_cfg())
 
 
 def _find_active_job(db: Database) -> Job | None:
@@ -41,7 +38,11 @@ def _find_active_job(db: Database) -> Job | None:
     return db.get_job(row["id"]) if row else None
 
 
-def _render_wizard(db: Database, cfg: Config, job: Job | None) -> None:
+@ui.refreshable
+def _render_wizard(db: Database, cfg: Config) -> None:
+    # Re-fetch the active job on every (re)render so `.refresh()` reflects the
+    # latest DB state in place — no full page reload, scroll position preserved.
+    job = _find_active_job(db)
     with ui.element("div").classes("rrs-wrap"):
         ui.html('<div class="rrs-title">Ranking Reverse Search</div>')
         if job is None:
@@ -61,7 +62,7 @@ def _render_url_input(db: Database, cfg: Config) -> None:
                 return
             job_id = db.create_job(url=url)
             asyncio.create_task(_run_pipeline(db, cfg, job_id))
-            ui.navigate.reload()
+            _render_wizard.refresh()
 
         html_button("PROCESS VIDEO", on_click, classes="rrs-btn rrs-btn-primary")
 
@@ -94,7 +95,7 @@ def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
     ):
         if job.id in _INFLIGHT:
             _render_progress(job)
-            ui.timer(1.0, lambda: ui.navigate.reload(), once=True)
+            ui.timer(1.0, _render_wizard.refresh, once=True)
         else:
             _render_progress(job)
             ui.html(
@@ -106,7 +107,7 @@ def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
             # worker died mid-write (rare), the user should START OVER instead.
             def _resume():
                 asyncio.create_task(_run_pipeline(db, cfg, job.id))
-                ui.navigate.reload()
+                _render_wizard.refresh()
 
             html_button("RESUME", _resume, classes="rrs-btn rrs-btn-primary")
             html_button("START OVER", lambda: _start_over(db, cfg.data_dir, job.id))
@@ -150,7 +151,7 @@ async def _open_frame_picker(db: Database, cfg: Config, scene: Scene) -> None:
     job = _find_active_job(db)
     if job is None:
         return
-    await open_frame_picker(db, cfg.data_dir, job.id, scene, on_close=lambda: None)
+    await open_frame_picker(db, cfg.data_dir, job.id, scene, on_close=_render_wizard.refresh)
 
 
 async def _do_reverse_search(db: Database, cfg: Config, scene: Scene, engine_id: str) -> None:
@@ -179,8 +180,24 @@ async def _engine_url_for_frame(db: Database, cfg: Config, engine, frame: Frame)
     if frame.imgbb_url:
         image_url = frame.imgbb_url
     else:
+        upload_path = Path(frame.path)
+        if frame.crop is not None:
+            # Search the cropped region: write a sidecar next to the full frame,
+            # upload that instead. imgbb_url is cleared whenever the crop changes.
+            sidecar = upload_path.with_name("0_crop.jpg")
+            try:
+                await asyncio.to_thread(
+                    crop_image,
+                    upload_path,
+                    (frame.crop.x, frame.crop.y, frame.crop.w, frame.crop.h),
+                    sidecar,
+                )
+            except Exception as exc:  # noqa: BLE001 — surface crop failure inline
+                ui.notify(f"crop failed: {exc}", type="negative")
+                return None
+            upload_path = sidecar
         try:
-            image_url = await asyncio.to_thread(upload_image, Path(frame.path), cfg.imgbb_api_key)
+            image_url = await asyncio.to_thread(upload_image, upload_path, cfg.imgbb_api_key)
         except ImgbbError as exc:
             ui.notify(f"imgbb: {exc}", type="negative")
             return None
@@ -237,4 +254,4 @@ def _start_over(db: Database, data_dir: Path, job_id: int) -> None:
     if paths.root.exists():
         shutil.rmtree(paths.root, ignore_errors=True)
     db.delete_job(job_id)
-    ui.navigate.to("/")
+    _render_wizard.refresh()

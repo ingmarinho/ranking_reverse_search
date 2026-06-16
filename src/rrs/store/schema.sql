@@ -28,6 +28,10 @@ CREATE TABLE IF NOT EXISTS frames (
   path            TEXT NOT NULL,
   imgbb_url       TEXT,
   is_selected     INTEGER NOT NULL DEFAULT 0,
+  crop_x          REAL,
+  crop_y          REAL,
+  crop_w          REAL,
+  crop_h          REAL,
   UNIQUE(scene_id, ordinal)
 );
 

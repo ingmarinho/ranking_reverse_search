@@ -6,7 +6,7 @@ from pathlib import Path
 from nicegui import app, ui
 
 from rrs.config import Config, load_config
-from rrs.pipeline.engines import default_enabled_ids
+from rrs.pipeline.engines import default_enabled_ids, get_engine
 from rrs.store.db import Database, open_db
 from rrs.ui.pages import register_pages
 
@@ -46,6 +46,8 @@ def main() -> None:
     # newly-added default engines so they appear without resetting the DB.
     stored = _DB.get_setting("enabled_engines")
     enabled = json.loads(stored) if stored else []
+    # Drop ids for engines that no longer exist (e.g. removed from the registry).
+    enabled = [e for e in enabled if get_engine(e) is not None]
     enabled += [e for e in default_enabled_ids() if e not in enabled]
     updated = json.dumps(enabled)
     if updated != stored:

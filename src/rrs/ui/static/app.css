@@ -188,6 +188,11 @@ body::before {
 }
 .rrs-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .rrs-frame.selected { border: 2px solid var(--accent); }
+.rrs-crop-overlay {
+  position: absolute; box-sizing: border-box;
+  border: 2px solid #fff; background: rgba(255, 255, 255, 0.10);
+  pointer-events: none;
+}
 .rrs-frame-add {
   display: flex; align-items: center; justify-content: center;
   color: var(--text-dim);
@@ -247,9 +252,24 @@ body::before {
    margin-top:auto pins it to the bottom of the right column. */
 .rrs-download { margin-top: auto; }
 .rrs-download-row {
-  display: flex; gap: 10px; align-items: center;
+  display: flex; gap: 10px; align-items: stretch;
 }
 .rrs-download-row .rrs-input { flex: 1 1 auto; min-width: 140px; }
+/* Match the buttons: collapse Quasar's tall standard field to the button height. */
+.rrs-download-row .rrs-input,
+.rrs-download-row .rrs-input .q-field__control,
+.rrs-download-row .rrs-input .q-field__native,
+.rrs-download-row .rrs-btn { box-sizing: border-box; height: 36px; }
+.rrs-download-row .rrs-input .q-field__control,
+.rrs-download-row .rrs-input .q-field__native {
+  min-height: 36px !important;
+  padding-top: 0 !important; padding-bottom: 0 !important;
+}
+.rrs-download-row .rrs-btn {
+  flex: 0 0 auto; min-width: 132px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding-top: 0; padding-bottom: 0;
+}
 .rrs-download-status { margin-top: 8px; min-width: 0; overflow: hidden; }
 .rrs-download-status span {
   display: block;
@@ -308,27 +328,25 @@ body::before {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Frame picker scrubber. The preview is a scroll container holding the full
-   frame; at 1× it fits (letterboxed), and zoom>1 overflows so it can be panned. */
+/* Frame picker scrubber. The preview holds the full frame; drag a box over it
+   to mark a crop region (drawn as an SVG overlay by interactive_image). */
 .rrs-scrub-preview {
   width: 100%;
   max-height: 60vh;
   background: var(--surface);
   border: 1px solid var(--border);
   overflow: auto;
-  text-align: center;
+  cursor: crosshair;
 }
-.rrs-scrub-img {
-  display: block;
-  margin: 0 auto;          /* centre when narrower than the container */
-  max-width: none;
-}
+.rrs-scrub-preview img { display: block; margin: 0 auto; }
 .rrs-scrub-label {
   margin-top: 10px;
   font-size: 12px; color: var(--text-dim);
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
 }
+.rrs-scrub-err-row { min-height: 16px; margin-top: 4px; }
+.rrs-scrub-err { font-size: 12px; color: var(--danger); }
 .rrs-scrub-row {
   display: flex; align-items: center; gap: 12px;
   margin-top: 12px;
@@ -337,6 +355,10 @@ body::before {
 .rrs-scrub-step {
   font-size: 18px; line-height: 1; padding: 6px 14px;
   flex: 0 0 auto;
+}
+.rrs-modal-actions {
+  display: flex; justify-content: flex-end; gap: 10px;
+  margin-top: 18px;
 }
 
 /* Page container */

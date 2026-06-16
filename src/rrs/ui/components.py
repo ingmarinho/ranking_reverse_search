@@ -100,9 +100,18 @@ def _render_frame_strip(
         if selected:
             f = selected[0]
             url = file_url(f.path, data_dir)
+            # Full frame thumbnail; if a crop is set, mark the region with an overlay.
+            overlay = ""
+            if f.crop is not None:
+                c = f.crop
+                overlay = (
+                    f'<div class="rrs-crop-overlay" style="'
+                    f"left:{c.x * 100:.2f}%;top:{c.y * 100:.2f}%;"
+                    f'width:{c.w * 100:.2f}%;height:{c.h * 100:.2f}%"></div>'
+                )
             frame = ui.element("div").classes("rrs-frame selected").style(aspect_style)
             with frame:
-                ui.html(f'<img src="{url}" alt="frame {f.frame_number}">')
+                ui.html(f'<img src="{url}" alt="frame {f.frame_number}">{overlay}')
             frame.on("click", lambda _, s=scene: on_open_frame_picker(s))
         else:
             add = ui.html(f'<div class="rrs-frame rrs-frame-add" style="{aspect_style}">+</div>')

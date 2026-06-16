@@ -6,7 +6,6 @@
 - improve UI. especially spacing at the top between start over button, title and first scene outline.
 
 
-also there is a page reload after every change? can this be undone? it shoudl refresh but now every time i change something im abck at the top of the website.
-
+also there is a page reload after every change? can this be undone? it shoudl refresh the UI but now every time i change something im abck at the top of the website.
 remove all engines apart from google, yandex, bing and tineye, every instance in code too.
 cleanup UI
