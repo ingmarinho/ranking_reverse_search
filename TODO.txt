@@ -2,13 +2,12 @@ rrs TODO — grouped for focused brainstorming sessions.
 Each "GROUP" below is meant to be one brainstorming/design session.
 
 ==============================================================================
-GROUP A — Frame-picker & cropping UX  [IN PROGRESS: being designed]
+GROUP A — Frame-picker & cropping UX  [DONE: merged to main]
 ==============================================================================
-- F1: fix scaling of image inside frame picker
-- F2: improve cropping — allow dragging the selected crop, dragging by
-      corners/sides, and make it smoother
-- F5: fix source URL bar — align placeholder text better with size of box,
-      center it maybe?
+- F1: [done] fix scaling of image inside frame picker
+- F2: [done] improve cropping — drag the selected crop, drag by corners,
+      smooth client-side overlay (move + corner resize)
+- F5: [done] fix source URL bar — placeholder vertically centered
 
 ==============================================================================
 GROUP B — Download management  [DONE]
@@ -21,35 +20,22 @@ GROUP B — Download management  [DONE]
       same title that was used in the past
 
 ==============================================================================
-GROUP C — imgbb key & onboarding
+GROUP C — imgbb key & onboarding  [DONE: merged to main 2026-06-16]
 ==============================================================================
-- F4: allow setting the imgbb API key inside the webapp somewhere instead of
-      having to supply it beforehand. Make it easier to use. Make the software
+- [DONE] F4: allow setting the imgbb API key inside the webapp somewhere instead
+      of having to supply it beforehand. Make it easier to use. Make the software
       unusable without an imgbb key. Save the key in the browser (cookie /
       localStorage) or on disk in a file.
+      → Implemented: onboarding gate + settings dialog, key stored in the
+        settings table (DB overrides IMGBB_API_KEY env), live validation.
 
 ==============================================================================
-GROUP D — Bugs (likely direct fixes, not design)
+GROUP D — Bugs 
 ==============================================================================
-- B1: index error selecting the last frame of the final scene of a video.
-      Example:
-        frame 656 / scene 521–657
-        could not read frame 657 from
-        /Users/ingmar/Dev/Repos/ranking_reverse_search/data/jobs/16/source.mp4
+- https://www.youtube.com/shorts/v_btdNxWgRw downloading this video (this was after researching a scene and i found this clip), it just downloads as a mp4 but is unplayable: '/Users/ingmar/Dev/Repos/ranking_reverse_search/data/downloads/Cheetah Core #funny #animals #cheetah/scene-02.mp4' also https://www.facebook.com/Extreme/videos/cheetah-jumps-on-safari-truck/396380945638279/ only plays back the audio not the actual video, seems broken. also https://www.instagram.com/p/DO-PCD3Co25/
 
-- B2: deno not being detected at all by yt-dlp → 403s / missing formats.
-      Warnings seen:
-        WARNING: [youtube] [jsc] Remote components challenge solver script
-        (deno) and NPM package (deno) were skipped. These may be required to
-        solve JS challenges. You can enable these downloads with
-        --remote-components ejs:github (recommended) or --remote-components
-        ejs:npm, respectively. See https://github.com/yt-dlp/yt-dlp/wiki/EJS
-        WARNING: [youtube] m8511B4tXZk: n challenge solving failed: Some
-        formats may be missing. Ensure you have a supported JavaScript runtime
-        and challenge solver script distribution installed.
-        ERROR: unable to download video data: HTTP Error 403: Forbidden
-
-- B3: intermittent ASGI error (everything still worked, but strange):
-        RuntimeError: Response content shorter than Content-Length
-      Raised from starlette/uvicorn during a NiceGUI response
-      (nicegui _exception_handler_500 → starlette base middleware send).
+logs:
+NiceGUI ready to go on http://localhost:8080, and http://192.168.178.198:8080
+WARNING: [generic] Falling back on generic information extractor
+WARNING: [Instagram] DO-PCD3Co25: No csrf token set by Instagram API
+WARNING: [Instagram] DRpmfnCk__R: No csrf token set by Instagram API

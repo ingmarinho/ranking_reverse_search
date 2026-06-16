@@ -159,6 +159,19 @@ def test_settings_get_and_set(db: Database):
     assert db.get_setting("missing") is None
 
 
+def test_imgbb_key_set_get_clear(db: Database):
+    assert db.get_imgbb_key() is None
+    db.set_imgbb_key("  key123  ")
+    assert db.get_imgbb_key() == "key123"  # stripped
+    db.clear_imgbb_key()
+    assert db.get_imgbb_key() is None
+
+
+def test_imgbb_key_empty_reads_as_none(db: Database):
+    db.set_setting("imgbb_api_key", "   ")
+    assert db.get_imgbb_key() is None
+
+
 def test_foreign_keys_cascade(db: Database):
     job_id = db.create_job(url="x")
     db.insert_scenes(job_id, [(0, 0, 48, 0.0, 2.0)])

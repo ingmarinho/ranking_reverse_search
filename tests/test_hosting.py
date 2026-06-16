@@ -7,7 +7,14 @@ import httpx
 import pytest
 import respx
 
-from rrs.pipeline.hosting import ImgbbError, upload_image
+from rrs.config import Config
+from rrs.pipeline.hosting import (
+    ImgbbError,
+    effective_imgbb_key,
+    upload_image,
+    validate_imgbb_key,
+)
+from rrs.store.db import open_db
 
 
 @pytest.fixture
@@ -67,3 +74,81 @@ def test_upload_image_malformed_response_raises(small_jpeg: Path):
     )
     with pytest.raises(ImgbbError):
         upload_image(small_jpeg, api_key="k")
+
+
+@respx.mock
+def test_validate_imgbb_key_success_sends_expiration_and_deletes():
+    upload = respx.post("https://api.imgbb.com/1/upload").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "url": "https://i.ibb.co/x.png",
+                    "delete_url": "https://ibb.co/del/abc",
+                }
+            },
+        )
+    )
+    delete = respx.get("https://ibb.co/del/abc").mock(return_value=httpx.Response(200))
+    validate_imgbb_key("good")  # must not raise
+    assert "expiration=60" in str(upload.calls.last.request.url)
+    assert delete.called
+
+
+@respx.mock
+def test_validate_imgbb_key_invalid_raises():
+    respx.post("https://api.imgbb.com/1/upload").mock(
+        return_value=httpx.Response(400, text="invalid api key")
+    )
+    with pytest.raises(ImgbbError):
+        validate_imgbb_key("bad")
+
+
+@respx.mock
+def test_validate_imgbb_key_network_error_raises():
+    respx.post("https://api.imgbb.com/1/upload").mock(side_effect=httpx.ConnectError("boom"))
+    with pytest.raises(ImgbbError):
+        validate_imgbb_key("any")
+
+
+@respx.mock
+def test_validate_imgbb_key_delete_failure_is_swallowed():
+    respx.post("https://api.imgbb.com/1/upload").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "url": "https://i.ibb.co/x.png",
+                    "delete_url": "https://ibb.co/del/abc",
+                }
+            },
+        )
+    )
+    respx.get("https://ibb.co/del/abc").mock(side_effect=httpx.ConnectError("nope"))
+    validate_imgbb_key("good")  # delete failure must not raise
+
+
+def _cfg(env_key):
+    return Config(
+        data_dir=Path("."),
+        port=8080,
+        scene_threshold=27.0,
+        imgbb_api_key=env_key,
+        has_deno=False,
+    )
+
+
+def test_effective_imgbb_key_prefers_db_over_env():
+    db = open_db(":memory:")
+    db.set_imgbb_key("db_key")
+    assert effective_imgbb_key(db, _cfg("env_key")) == "db_key"
+
+
+def test_effective_imgbb_key_falls_back_to_env():
+    db = open_db(":memory:")
+    assert effective_imgbb_key(db, _cfg("env_key")) == "env_key"
+
+
+def test_effective_imgbb_key_none_when_unset():
+    db = open_db(":memory:")
+    assert effective_imgbb_key(db, _cfg(None)) is None

@@ -163,6 +163,12 @@ body::before {
   color: var(--text) !important;
   font-family: inherit !important;
   font-size: 14px !important;
+  /* Center the placeholder/text vertically within our bordered box and align
+     its height with the PROCESS VIDEO button. Left-aligned (it's a URL). */
+  height: 28px !important;
+  line-height: 28px !important;
+  padding: 0 !important;
+  text-align: left;
 }
 
 .rrs-engine-chip::before { content: "▸ "; }
@@ -343,17 +349,56 @@ body::before {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Frame picker scrubber. The preview holds the full frame; drag a box over it
-   to mark a crop region (drawn as an SVG overlay by interactive_image). */
-.rrs-scrub-preview {
-  width: 100%;
-  max-height: 60vh;
+/* Frame picker scrubber. The preview holds the full frame; a client-side crop
+   overlay (.rrs-crop-layer) sits over it to mark a crop region.
+   Wrapper shrink-wraps the displayed image so the overlay (absolute, inset:0)
+   is pixel-aligned with it. */
+.rrs-crop-wrap {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
   background: var(--surface);
   border: 1px solid var(--border);
-  overflow: auto;
-  cursor: crosshair;
 }
-.rrs-scrub-preview img { display: block; margin: 0 auto; }
+/* The interactive_image root must also shrink-wrap its <img> so the wrapper's
+   width equals the displayed image width and the overlay (inset:0) aligns. */
+.rrs-scrub-preview { display: block; width: fit-content; max-width: 100%; }
+.rrs-scrub-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  width: auto;
+  height: auto;
+}
+/* The interactive_image SVG layer is unused for cropping now. */
+.rrs-scrub-preview svg { pointer-events: none; }
+/* Client-side crop overlay (move + corner-resize). */
+.rrs-crop-layer {
+  position: absolute; inset: 0; z-index: 2;
+  cursor: crosshair; touch-action: none;
+}
+.rrs-crop-box {
+  position: absolute; box-sizing: border-box;
+  border: 1px solid #fff;
+  background: rgba(255, 255, 255, 0.12);
+  cursor: move; display: none;
+}
+.rrs-crop-handle {
+  position: absolute; width: 10px; height: 10px;
+  background: var(--bg); border: 1px solid var(--accent);
+  box-sizing: border-box;
+}
+.rrs-crop-handle[data-handle="nw"] { left: -5px; top: -5px; cursor: nwse-resize; }
+.rrs-crop-handle[data-handle="ne"] { right: -5px; top: -5px; cursor: nesw-resize; }
+.rrs-crop-handle[data-handle="sw"] { left: -5px; bottom: -5px; cursor: nesw-resize; }
+.rrs-crop-handle[data-handle="se"] { right: -5px; bottom: -5px; cursor: nwse-resize; }
+.rrs-crop-size {
+  position: absolute; left: 2px; bottom: 2px;
+  font-size: 10px; color: #fff; background: rgba(0, 0, 0, 0.5);
+  padding: 0 3px; pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
 .rrs-scrub-label {
   margin-top: 10px;
   font-size: 12px; color: var(--text-dim);

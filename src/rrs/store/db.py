@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 
+SETTINGS_IMGBB_KEY = "imgbb_api_key"
+
 
 class JobStatus(enum.StrEnum):
     DOWNLOADING = "downloading"
@@ -271,6 +273,17 @@ class Database:
             " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value),
         )
+        self._conn.commit()
+
+    def get_imgbb_key(self) -> str | None:
+        value = (self.get_setting(SETTINGS_IMGBB_KEY) or "").strip()
+        return value or None
+
+    def set_imgbb_key(self, key: str) -> None:
+        self.set_setting(SETTINGS_IMGBB_KEY, key.strip())
+
+    def clear_imgbb_key(self) -> None:
+        self._conn.execute("DELETE FROM settings WHERE key = ?", (SETTINGS_IMGBB_KEY,))
         self._conn.commit()
 
     # ---- helpers ----

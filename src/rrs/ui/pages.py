@@ -15,7 +15,7 @@ from rrs.config import Config
 from rrs.pipeline.download import download_video
 from rrs.pipeline.engines import get_engine
 from rrs.pipeline.frames import crop_image, get_video_dimensions
-from rrs.pipeline.hosting import ImgbbError, upload_image
+from rrs.pipeline.hosting import ImgbbError, effective_imgbb_key, upload_image
 from rrs.pipeline.jobs import (
     job_paths,
     next_extra_path,
@@ -25,6 +25,7 @@ from rrs.pipeline.jobs import (
 from rrs.store.db import Database, Frame, Job, JobStatus, Scene
 from rrs.ui.components import html_button, render_extra_downloader, render_scene_card
 from rrs.ui.modals import open_frame_picker
+from rrs.ui.onboarding import open_imgbb_settings, render_onboarding
 
 GetDb = Callable[[], Database]
 GetCfg = Callable[[], Config]
@@ -49,8 +50,19 @@ def _render_wizard(db: Database, cfg: Config) -> None:
     # Re-fetch the active job on every (re)render so `.refresh()` reflects the
     # latest DB state in place — no full page reload, scroll position preserved.
     job = _find_active_job(db)
+    # Gate the whole app behind having a key. render_onboarding opens its own
+    # rrs-wrap, so return before opening ours to avoid double-nesting.
+    if effective_imgbb_key(db, cfg) is None:
+        render_onboarding(db, cfg, on_ready=_render_wizard.refresh)
+        return
     with ui.element("div").classes("rrs-wrap"):
-        ui.html('<div class="rrs-title">Ranking Reverse Search</div>')
+        with ui.row().classes("w-full items-center").style("justify-content:space-between"):
+            ui.html('<div class="rrs-title">Ranking Reverse Search</div>')
+            html_button(
+                "API KEY",
+                lambda: open_imgbb_settings(db, cfg, on_change=_render_wizard.refresh),
+                classes="rrs-btn",
+            )
         if job is None:
             _render_url_input(db, cfg)
             return
@@ -129,8 +141,6 @@ def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
             ui.html(f"<div>{(job.title or 'Untitled')} — {(job.duration_sec or 0):.1f}s</div>")
         html_button("START OVER", lambda: _start_over(db, cfg.data_dir, job.id))
 
-    if cfg.imgbb_api_key is None:
-        ui.html('<div class="rrs-error">IMGBB_API_KEY not set — engine buttons disabled</div>')
     if not cfg.has_deno:
         ui.html(
             '<div class="rrs-error">deno not on PATH — YouTube downloads may be '
@@ -171,8 +181,8 @@ async def _do_reverse_search(db: Database, cfg: Config, scene: Scene, engine_id:
     if engine is None or engine.status != "ready":
         ui.notify(f"{engine_id} is not implemented yet", type="warning")
         return
-    if cfg.imgbb_api_key is None:
-        ui.notify("IMGBB_API_KEY not set", type="negative")
+    if effective_imgbb_key(db, cfg) is None:
+        ui.notify("imgbb key not set", type="negative")
         return
 
     selected = [f for f in db.list_frames(scene.id) if f.is_selected]
@@ -209,7 +219,8 @@ async def _engine_url_for_frame(db: Database, cfg: Config, engine, frame: Frame)
                 return None
             upload_path = sidecar
         try:
-            image_url = await asyncio.to_thread(upload_image, upload_path, cfg.imgbb_api_key)
+            key = effective_imgbb_key(db, cfg)
+            image_url = await asyncio.to_thread(upload_image, upload_path, key)
         except ImgbbError as exc:
             ui.notify(f"imgbb: {exc}", type="negative")
             return None

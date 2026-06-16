@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
 import shutil
 from collections.abc import Callable
+from dataclasses import asdict
 from pathlib import Path
 
 from nicegui import ui
-from nicegui.events import KeyEventArguments, MouseEventArguments
+from nicegui.events import GenericEventArguments, KeyEventArguments
 
-from rrs.pipeline.frames import FrameExtractError, extract_frame, get_video_dimensions
+from rrs.pipeline.frames import FrameExtractError, extract_frame
 from rrs.pipeline.jobs import job_paths
 from rrs.pipeline.scenes import last_selectable_frame
 from rrs.store.db import CropRect, Database, Scene
@@ -18,6 +20,126 @@ from rrs.ui.components import file_url, html_button
 # A drag smaller than this fraction of the frame is treated as a stray click, not
 # a crop — so a single click never wipes an existing crop.
 _MIN_CROP = 0.01
+
+
+def crop_from_payload(payload: object) -> CropRect | None:
+    """Validate a client pointer-up crop payload into a clamped CropRect.
+
+    Returns None for a missing/empty payload, non-numeric fields, or a box
+    smaller than `_MIN_CROP` in either dimension (a stray click). The rect is
+    clamped to stay fully inside the [0,1] frame."""
+    if not isinstance(payload, dict):
+        return None
+    try:
+        x = float(payload["x"])
+        y = float(payload["y"])
+        w = float(payload["w"])
+        h = float(payload["h"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    x = min(max(x, 0.0), 1.0)
+    y = min(max(y, 0.0), 1.0)
+    w = min(max(w, 0.0), 1.0 - x)
+    h = min(max(h, 0.0), 1.0 - y)
+    if w <= _MIN_CROP or h <= _MIN_CROP:
+        return None
+    return CropRect(x, y, w, h)
+
+
+# Vanilla-JS crop overlay. All pointer dragging/resizing happens client-side
+# (no websocket round-trip mid-drag). On pointer-up it dispatches an `rrs-crop`
+# CustomEvent on the overlay element; Python listens via an element-scoped
+# `.on(...)`. Idempotent: guarded by `window.rrsCrop ||`.
+_CROP_JS = """
+window.rrsCrop = window.rrsCrop || {
+  instances: {},
+  set(id, rect) { const i = this.instances[id]; if (i) i.set(rect); },
+  init(elId, initial, minCrop) {
+    const overlay = document.getElementById('c' + elId);
+    if (!overlay) return;
+    const box = overlay.querySelector('.rrs-crop-box');
+    const size = overlay.querySelector('.rrs-crop-size');
+    const MIN = minCrop;
+    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+    const inst = { rect: initial || null, drag: null };
+    this.instances[elId] = inst;
+
+    const render = () => {
+      const r = inst.rect;
+      if (!r) { box.style.display = 'none'; return; }
+      box.style.display = 'block';
+      box.style.left = (r.x * 100) + '%';
+      box.style.top = (r.y * 100) + '%';
+      box.style.width = (r.w * 100) + '%';
+      box.style.height = (r.h * 100) + '%';
+      size.textContent = Math.round(r.w * 100) + '\\u00d7' + Math.round(r.h * 100) + '%';
+    };
+    inst.set = (rect) => { inst.rect = rect; render(); };
+
+    const pos = (e) => {
+      const b = overlay.getBoundingClientRect();
+      return { x: clamp01((e.clientX - b.left) / b.width),
+               y: clamp01((e.clientY - b.top) / b.height) };
+    };
+    const rectFrom = (a, c) => {
+      const x = Math.min(a.x, c.x), y = Math.min(a.y, c.y);
+      let w = Math.abs(c.x - a.x), h = Math.abs(c.y - a.y);
+      w = Math.min(w, 1 - x); h = Math.min(h, 1 - y);
+      return { x, y, w, h };
+    };
+    const inside = (r, p) => r && p.x >= r.x && p.x <= r.x + r.w
+                              && p.y >= r.y && p.y <= r.y + r.h;
+
+    overlay.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      overlay.setPointerCapture(e.pointerId);
+      const p = pos(e);
+      const prev = inst.rect ? { ...inst.rect } : null;
+      const handle = e.target.dataset ? e.target.dataset.handle : null;
+      if (handle && inst.rect) {
+        const r = inst.rect;
+        const anchor = { x: handle.includes('w') ? r.x + r.w : r.x,
+                         y: handle.includes('n') ? r.y + r.h : r.y };
+        inst.drag = { mode: 'resize', anchor, prev };
+      } else if (inside(inst.rect, p)) {
+        inst.drag = { mode: 'move', prev,
+                      off: { x: p.x - inst.rect.x, y: p.y - inst.rect.y } };
+      } else {
+        inst.drag = { mode: 'resize', anchor: p, prev };
+        inst.rect = { x: p.x, y: p.y, w: 0, h: 0 };
+        render();
+      }
+    });
+    overlay.addEventListener('pointermove', (e) => {
+      if (!inst.drag) return;
+      const p = pos(e);
+      if (inst.drag.mode === 'move') {
+        const r = inst.drag.prev;
+        const nx = Math.min(clamp01(p.x - inst.drag.off.x), 1 - r.w);
+        const ny = Math.min(clamp01(p.y - inst.drag.off.y), 1 - r.h);
+        inst.rect = { x: nx, y: ny, w: r.w, h: r.h };
+      } else {
+        inst.rect = rectFrom(inst.drag.anchor, p);
+      }
+      render();
+    });
+    const end = () => {
+      if (!inst.drag) return;
+      const prev = inst.drag.prev;
+      inst.drag = null;
+      const r = inst.rect;
+      // Sub-min drag = stray click: keep the previous crop untouched.
+      if (!r || r.w <= MIN || r.h <= MIN) inst.rect = prev;
+      render();
+      overlay.dispatchEvent(new CustomEvent('rrs-crop', { detail: inst.rect }));
+    };
+    overlay.addEventListener('pointerup', end);
+    overlay.addEventListener('pointercancel', end);
+
+    render();
+  }
+};
+"""
 
 
 async def open_frame_picker(
@@ -35,7 +157,6 @@ async def open_frame_picker(
     and leaves the previously-selected frame/crop untouched. `on_close` then
     refreshes the scene list in place."""
     paths = job_paths(data_dir, job_id)
-    aspect_w, aspect_h = get_video_dimensions(paths.source)
 
     frames = db.list_frames(scene.id)
     if not frames:
@@ -53,23 +174,8 @@ async def open_frame_picker(
     state: dict = {
         "fn": max(start, min(end, frame_row.frame_number)),
         "crop": frame_row.crop,  # CropRect | None
-        "drag": None,  # (x0, y0) normalized while dragging, else None
     }
     pending: list[asyncio.Task] = []  # most recent in-flight extraction, awaited on commit
-
-    def _crop_svg(rect: CropRect | None) -> str:
-        if rect is None:
-            return ""
-        x, y = rect.x * aspect_w, rect.y * aspect_h
-        w, h = rect.w * aspect_w, rect.h * aspect_h
-        return (
-            f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
-            f'fill="rgba(255,255,255,0.12)" stroke="#fff" stroke-width="2" '
-            f'vector-effect="non-scaling-stroke" />'
-        )
-
-    def _render_crop(live: CropRect | None = None) -> None:
-        img.set_content(_crop_svg(live if live is not None else state["crop"]))
 
     def _render_label() -> None:
         crop = state["crop"]
@@ -91,7 +197,6 @@ async def open_frame_picker(
         err_label.set_content("")
         img.set_source(f"{file_url(scrub_path, data_dir)}&fn={fn}")
         slider.value = fn  # programmatic set: keeps the handle in sync, no event
-        _render_crop()
         _render_label()
 
     def _scrub(fn: int) -> None:
@@ -100,33 +205,16 @@ async def open_frame_picker(
     def _step(delta: int) -> None:
         _scrub(state["fn"] + delta)
 
-    def _rect_from(p0: tuple[float, float], p1: tuple[float, float]) -> CropRect:
-        x0, y0 = p0
-        x1, y1 = p1
-        x, y = min(x0, x1), min(y0, y1)
-        w, h = abs(x1 - x0), abs(y1 - y0)
-        # Clamp to the frame.
-        w, h = min(w, 1.0 - x), min(h, 1.0 - y)
-        return CropRect(x, y, w, h)
-
-    def _on_mouse(e: MouseEventArguments) -> None:
-        nx = max(0.0, min(1.0, e.image_x / aspect_w))
-        ny = max(0.0, min(1.0, e.image_y / aspect_h))
-        if e.type == "mousedown":
-            state["drag"] = (nx, ny)
-        elif e.type == "mousemove" and state["drag"] is not None:
-            _render_crop(live=_rect_from(state["drag"], (nx, ny)))
-        elif e.type == "mouseup" and state["drag"] is not None:
-            rect = _rect_from(state["drag"], (nx, ny))
-            state["drag"] = None
-            if rect.w > _MIN_CROP and rect.h > _MIN_CROP:
-                state["crop"] = rect
-            _render_crop()
-            _render_label()
+    def _on_crop_event(e: GenericEventArguments) -> None:
+        detail = e.args
+        if isinstance(detail, dict) and "detail" in detail:
+            detail = detail["detail"]
+        state["crop"] = crop_from_payload(detail)
+        _render_label()
 
     def _reset_crop() -> None:
         state["crop"] = None
-        _render_crop()
+        ui.run_javascript(f"window.rrsCrop.set({overlay.id}, null)")
         _render_label()
 
     def _on_key(e: KeyEventArguments) -> None:
@@ -156,13 +244,14 @@ async def open_frame_picker(
             # Start on the current committed frame so the modal isn't blank; the
             # awaited _show() below swaps in the scrub preview.
             initial = f"{file_url(out_path, data_dir)}" if out_path.exists() else ""
-            img = ui.interactive_image(
-                initial,
-                events=["mousedown", "mousemove", "mouseup"],
-                on_mouse=_on_mouse,
-                cross=False,
-                sanitize=False,
-            ).classes("rrs-scrub-preview")
+            with ui.element("div").classes("rrs-crop-wrap"):
+                img = ui.interactive_image(initial, cross=False).classes("rrs-scrub-preview")
+                with ui.element("div").classes("rrs-crop-layer") as overlay:
+                    with ui.element("div").classes("rrs-crop-box"):
+                        for h in ("nw", "ne", "sw", "se"):
+                            ui.element("div").classes("rrs-crop-handle").props(f"data-handle={h}")
+                        ui.element("div").classes("rrs-crop-size")
+            overlay.on("rrs-crop", _on_crop_event, args=["detail"])
             label = ui.html(f"frame {state['fn']} / scene {start}–{end}").classes("rrs-scrub-label")
             err_label = ui.html("").classes("rrs-scrub-err-row")
 
@@ -187,4 +276,10 @@ async def open_frame_picker(
                 html_button("USE THIS FRAME", _commit, classes="rrs-btn rrs-btn-primary")
 
     dialog.open()
+    c = state["crop"]
+    initial_crop = "null" if c is None else json.dumps(asdict(c))
+    # Send the module (idempotent) and init in one round-trip so the guard and
+    # init always run in the same microtask. _MIN_CROP is the single source of
+    # truth for the stray-click threshold, passed through to the overlay.
+    ui.run_javascript(f"{_CROP_JS}\nwindow.rrsCrop.init({overlay.id}, {initial_crop}, {_MIN_CROP})")
     await _show(state["fn"])

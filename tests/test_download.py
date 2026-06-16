@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from rrs.pipeline.download import DownloadResult, download_video
+from rrs.pipeline.download import (
+    DownloadResult,
+    _ensure_playable,
+    _probe_codecs,
+    download_video,
+)
 
 
 @pytest.fixture
@@ -54,10 +61,26 @@ def test_download_video_with_1080p_cap(fake_ydl, tmp_path):
     assert fake_ydl["opts"]["outtmpl"].startswith(str(tmp_path))
 
 
-def test_download_video_best_when_max_height_none(fake_ydl, tmp_path):
+def test_download_video_prefers_h264_aac(fake_ydl, tmp_path):
+    # Regression: yt-dlp's bare "best" picks VP9/AV1 + Opus, which it muxes into
+    # .mp4 to produce a file QuickTime plays as audio-only. The selector must
+    # prefer H.264 video + AAC audio so native-H.264 sources need no re-encode.
     out = tmp_path / "source.mp4"
     download_video(url="x", out_path=out, max_height=None)
-    assert fake_ydl["opts"]["format"] == "bv*+ba/b"
+    fmt = fake_ydl["opts"]["format"]
+    assert fmt.startswith("bv*[vcodec^=avc]+ba[acodec^=mp4a]")
+    assert fmt.endswith("/b")  # still falls back to a best single stream
+
+
+def test_download_video_height_cap_with_always_available_fallback(fake_ydl, tmp_path):
+    out = tmp_path / "source.mp4"
+    download_video(url="x", out_path=out, max_height=720)
+    fmt = fake_ydl["opts"]["format"]
+    # The cap constrains the preference clauses...
+    assert "[height<=720]" in fmt
+    # ...but the final clause is the unconstrained default so availability never
+    # regresses (e.g. Instagram exposing only an out-of-cap format).
+    assert fmt.endswith("/bv*+ba/b")  # uncapped, no codec filter
 
 
 def test_download_enables_ejs_remote_components(fake_ydl, tmp_path):
@@ -83,3 +106,73 @@ def test_download_video_progress_hook_invoked(fake_ydl, tmp_path):
     hooks[0]({"status": "downloading", "downloaded_bytes": 50, "total_bytes": 100})
     assert received and 0.0 <= received[-1] <= 1.0
     assert received[-1] == pytest.approx(0.5)
+
+
+def _make_video(path: Path, vcodec: str, acodec: str | None) -> None:
+    """Build a 1-second test clip with the given codecs via ffmpeg."""
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-t",
+        "1",
+        "-i",
+        "color=c=red:s=64x64:r=10",
+    ]
+    if acodec:
+        cmd += ["-f", "lavfi", "-t", "1", "-i", "sine=frequency=440"]
+    cmd += ["-c:v", vcodec, "-pix_fmt", "yuv420p"]
+    if acodec:
+        cmd += ["-c:a", acodec, "-shortest"]
+    cmd += [str(path)]
+    subprocess.run(cmd, check=True, capture_output=True)
+
+
+pytestmark_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not on PATH")
+
+
+@pytestmark_ffmpeg
+def test_ensure_playable_reencodes_vp9_to_h264(tmp_path):
+    # The Facebook/YouTube bug: VP9 video muxed into .mp4 plays audio-only in
+    # QuickTime. _ensure_playable must transcode it to H.264.
+    path = tmp_path / "vid.mp4"
+    _make_video(path, "libvpx-vp9", "aac")
+    assert _probe_codecs(path)[0] == "vp9"
+    _ensure_playable(path)
+    assert _probe_codecs(path) == ("h264", "aac")
+
+
+@pytestmark_ffmpeg
+def test_ensure_playable_transcodes_opus_audio(tmp_path):
+    path = tmp_path / "vid.mp4"
+    _make_video(path, "libx264", "libopus")
+    assert _probe_codecs(path) == ("h264", "opus")
+    _ensure_playable(path)
+    assert _probe_codecs(path) == ("h264", "aac")
+
+
+@pytestmark_ffmpeg
+def test_ensure_playable_noop_for_h264_aac(tmp_path):
+    # Native-H.264 downloads must not be re-encoded (lossless + fast path).
+    path = tmp_path / "vid.mp4"
+    _make_video(path, "libx264", "aac")
+    before = path.read_bytes()
+    _ensure_playable(path)
+    assert path.read_bytes() == before  # byte-identical: no transcode happened
+
+
+@pytestmark_ffmpeg
+def test_ensure_playable_handles_video_without_audio(tmp_path):
+    path = tmp_path / "vid.mp4"
+    _make_video(path, "libvpx-vp9", None)
+    _ensure_playable(path)
+    assert _probe_codecs(path) == ("h264", None)
+
+
+def test_probe_codecs_returns_none_for_garbage(tmp_path):
+    path = tmp_path / "junk.mp4"
+    path.write_bytes(b"\x00\x01\x02not a video")
+    assert _probe_codecs(path) == (None, None)
