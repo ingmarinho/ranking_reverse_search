@@ -11,6 +11,11 @@ rrs                          # run (or: python -m rrs.main) → http://localhost
 pytest                       # tests
 ```
 
+Also needs **Deno ≥2.0 on PATH** (recommended JS runtime) for full YouTube
+support — yt-dlp (≥2025.11.12) runs it to solve YouTube's signature/nsig JS
+challenges. Missing it is non-fatal (soft warning + UI banner), but format
+availability degrades. Install via `brew install deno` or https://deno.com/.
+
 Required/optional env vars: `IMGBB_API_KEY` (needed to host frames for search),
 `DATA_DIR` (default `./data`), `PORT` (default 8080), `SCENE_THRESHOLD` (default 27.0).
 
@@ -29,7 +34,7 @@ Layered, single-process:
   Tables: `jobs`, `scenes`, `frames`, `sources`, `settings`. Row → frozen
   dataclass (`Job`, `Scene`, `Frame`, `Source`).
 - **`pipeline/`** — `download` (yt-dlp), `scenes` (PySceneDetect), `frames`
-  (ffmpeg frame extraction), `trim`, `hosting` (imgbb upload), `engines/`,
+  (ffmpeg frame extraction), `hosting` (imgbb upload), `engines/`,
   `jobs` (orchestration).
 - **`ui/`** — `pages.py` (wizard / index page), `components.py` (scene cards),
   `modals.py` (frame picker, trim modal).
@@ -48,7 +53,7 @@ Layered, single-process:
   (seeded from `default_enabled_ids()` on first run). Add an engine by creating a
   module exporting `ENGINE` and registering it in `engines/__init__.py`.
 - **Data layout**: per-job files under `DATA_DIR/jobs/<id>/`
-  (`source.mp4`, `frames/<scene>/<ordinal>.jpg`, `sources/`, `clips/`); sqlite at
+  (`source.mp4`, `frames/<scene>/<ordinal>.jpg`, `sources/`); sqlite at
   `DATA_DIR/app.db`. Served read-only at `/_data`; static assets at `/_static`.
 
 ## Gotchas

@@ -28,6 +28,10 @@ CREATE TABLE IF NOT EXISTS frames (
   path            TEXT NOT NULL,
   imgbb_url       TEXT,
   is_selected     INTEGER NOT NULL DEFAULT 0,
+  crop_x          REAL,
+  crop_y          REAL,
+  crop_w          REAL,
+  crop_h          REAL,
   UNIQUE(scene_id, ordinal)
 );
 
@@ -36,9 +40,6 @@ CREATE TABLE IF NOT EXISTS sources (
   scene_id        INTEGER NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
   url             TEXT NOT NULL,
   path            TEXT,
-  trim_start_sec  REAL,
-  trim_end_sec    REAL,
-  clip_path       TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(scene_id)
 );

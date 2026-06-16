@@ -4,8 +4,10 @@ version = "0.1.0"
 description = "Ranking reverse search — local NiceGUI tool"
 requires-python = ">=3.11"
 dependencies = [
+  # yt-dlp >= 2025.11.12 requires an external JS runtime (Deno, recommended) for
+  # full YouTube support; the `default` extra bundles yt-dlp-ejs (the JS solver).
+  "yt-dlp[default]>=2025.11.12",
   "nicegui>=2.0",
-  "yt-dlp>=2024.1.1",
   "scenedetect[opencv]>=0.6.4",
   "httpx>=0.27",
 ]

@@ -46,25 +46,23 @@ def extract_frame(video_path: Path, frame_number: int, out_path: Path) -> Path:
     return out_path
 
 
-def extract_evenly_spaced(
-    video_path: Path,
-    start_frame: int,
-    end_frame: int,
-    count: int,
-    out_dir: Path,
-) -> list[tuple[int, Path]]:
-    """Extract `count` frames evenly spaced through [start_frame, end_frame).
+def crop_image(
+    src_path: Path, rect_norm: tuple[float, float, float, float], out_path: Path
+) -> Path:
+    """Write a cropped copy of `src_path` to `out_path`.
 
-    Returns list of (frame_number, written_path) in order.
-    """
-    if count < 1:
-        return []
-    span = max(1, end_frame - start_frame)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    results: list[tuple[int, Path]] = []
-    for i in range(count):
-        fn = start_frame + int((i + 0.5) * span / count)
-        path = out_dir / f"cand_{i}.jpg"
-        extract_frame(video_path, fn, path)
-        results.append((fn, path))
-    return results
+    `rect_norm` is (x, y, w, h) as fractions (0..1) of the source image. Pixel
+    bounds are clamped so the crop is always a non-empty region."""
+    img = cv2.imread(str(src_path))
+    if img is None:
+        raise FrameExtractError(f"could not read {src_path}")
+    h, w = img.shape[:2]
+    x, y, cw, ch = rect_norm
+    x0 = max(0, min(w - 1, round(x * w)))
+    y0 = max(0, min(h - 1, round(y * h)))
+    x1 = max(x0 + 1, min(w, round((x + cw) * w)))
+    y1 = max(y0 + 1, min(h, round((y + ch) * h)))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if not cv2.imwrite(str(out_path), img[y0:y1, x0:x1], [cv2.IMWRITE_JPEG_QUALITY, 88]):
+        raise FrameExtractError(f"failed to write {out_path}")
+    return out_path

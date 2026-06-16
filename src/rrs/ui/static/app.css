@@ -177,7 +177,7 @@ body::before {
 }
 .rrs-frame {
   position: relative;
-  height: 140px;          /* uniform strip height; width derived from aspect-ratio */
+  height: 150px;          /* uniform strip height; width derived from aspect-ratio */
   aspect-ratio: 16 / 9;   /* fallback if no inline aspect-ratio is set */
   background: var(--surface);
   border: 1px solid var(--border);
@@ -188,26 +188,11 @@ body::before {
 }
 .rrs-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .rrs-frame.selected { border: 2px solid var(--accent); }
-.rrs-frame .rrs-ord {
-  position: absolute; top: 0; left: 0;
-  background: var(--accent); color: #0d0c0a;
-  font-weight: 700; font-size: 10px;
-  padding: 2px 6px;
-  letter-spacing: 0.04em;
-  z-index: 1;
+.rrs-crop-overlay {
+  position: absolute; box-sizing: border-box;
+  border: 2px solid #fff; background: rgba(255, 255, 255, 0.10);
+  pointer-events: none;
 }
-.rrs-frame .rrs-remove {
-  position: absolute; top: 0; right: 0;
-  background: var(--danger); color: var(--bg);
-  font-weight: 700; font-size: 14px;
-  padding: 0 8px;
-  line-height: 1.6;
-  z-index: 2;
-  opacity: 0;
-  transition: opacity 120ms linear;
-}
-.rrs-frame.removable:hover { border-color: var(--danger) !important; }
-.rrs-frame.removable:hover .rrs-remove { opacity: 1; }
 .rrs-frame-add {
   display: flex; align-items: center; justify-content: center;
   color: var(--text-dim);
@@ -239,32 +224,61 @@ body::before {
 .rrs-scene-range { color: var(--text); }
 .rrs-scene-delta { color: var(--text-dim); }
 
-.rrs-engines { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: stretch; }
-
-.rrs-engine-tag {
-  display: inline-flex;
-  align-items: center;
-  background: var(--accent);
-  color: var(--bg);
-  font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  padding: 0 10px;
-  min-width: 36px;
-  justify-content: center;
+/* Scene body: thumbnail on the left, engines + download stacked on the right
+   so they fill the height beside the thumbnail (no dead space). */
+.rrs-scene-body {
+  display: flex;
+  gap: 18px;
+  align-items: stretch;
+}
+.rrs-scene-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.rrs-source-row {
-  display: flex; gap: 10px; align-items: stretch; margin-top: 14px;
+.rrs-engines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+  align-content: flex-start;
+  flex: 0 0 auto;
 }
-.rrs-source-row .rrs-input { flex: 1; }
 
-.rrs-status-line {
-  margin-top: 12px; padding-top: 10px;
-  border-top: 1px dashed var(--border);
-  display: flex; align-items: center; gap: 12px;
-  font-size: 12px; color: var(--text-dim);
+/* Download control: input + buttons on one line, status on its own line below.
+   margin-top:auto pins it to the bottom of the right column. */
+.rrs-download { margin-top: auto; }
+.rrs-download-row {
+  display: flex; gap: 10px; align-items: stretch;
 }
+.rrs-download-row .rrs-input { flex: 1 1 auto; min-width: 140px; }
+/* Match the buttons: collapse Quasar's tall standard field to the button height. */
+.rrs-download-row .rrs-input,
+.rrs-download-row .rrs-input .q-field__control,
+.rrs-download-row .rrs-input .q-field__native,
+.rrs-download-row .rrs-btn { box-sizing: border-box; height: 36px; }
+.rrs-download-row .rrs-input .q-field__control,
+.rrs-download-row .rrs-input .q-field__native {
+  min-height: 36px !important;
+  padding-top: 0 !important; padding-bottom: 0 !important;
+}
+.rrs-download-row .rrs-btn {
+  flex: 0 0 auto; min-width: 132px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding-top: 0; padding-bottom: 0;
+}
+.rrs-download-status { margin-top: 8px; min-width: 0; overflow: hidden; }
+.rrs-download-status span {
+  display: block;
+  font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rrs-download-done { color: var(--accent); }
+.rrs-download-busy { color: var(--text-dim); }
+.rrs-download-err { color: var(--danger); }
 
 /* Top progress strip */
 
@@ -314,16 +328,37 @@ body::before {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Frame picker grid */
-.rrs-grid-9 {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-.rrs-grid-9 .rrs-frame {
+/* Frame picker scrubber. The preview holds the full frame; drag a box over it
+   to mark a crop region (drawn as an SVG overlay by interactive_image). */
+.rrs-scrub-preview {
   width: 100%;
-  height: auto;                 /* width-driven cells in the picker */
-  aspect-ratio: 16 / 9;         /* fallback if inline aspect-ratio missing */
+  max-height: 60vh;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: auto;
+  cursor: crosshair;
+}
+.rrs-scrub-preview img { display: block; margin: 0 auto; }
+.rrs-scrub-label {
+  margin-top: 10px;
+  font-size: 12px; color: var(--text-dim);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.rrs-scrub-err-row { min-height: 16px; margin-top: 4px; }
+.rrs-scrub-err { font-size: 12px; color: var(--danger); }
+.rrs-scrub-row {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 12px;
+}
+.rrs-scrub-slider { flex: 1; }
+.rrs-scrub-step {
+  font-size: 18px; line-height: 1; padding: 6px 14px;
+  flex: 0 0 auto;
+}
+.rrs-modal-actions {
+  display: flex; justify-content: flex-end; gap: 10px;
+  margin-top: 18px;
 }
 
 /* Page container */
@@ -336,10 +371,22 @@ body::before {
 .rrs-title {
   text-transform: uppercase; letter-spacing: 0.12em;
   font-weight: 700; font-size: 13px;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
   color: var(--text);
 }
 .rrs-meta { color: var(--text-dim); font-size: 12px; }
+
+/* Header above the scene list: title metadata + START OVER, then a gap
+   before the first scene card. */
+.rrs-scene-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
 
 .rrs-error {
   border: 1px solid var(--danger);

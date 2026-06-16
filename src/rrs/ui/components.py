@@ -1,13 +1,26 @@
 from __future__ import annotations
 
-import json
-from collections.abc import Callable
+import html
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from nicegui import ui
 
 from rrs.pipeline.engines import get_engine
 from rrs.store.db import Database, Frame, Scene
+
+
+def html_button(label: str, on_click: Callable, classes: str = "rrs-btn"):
+    """Render a plain HTML button styled by our CSS.
+
+    NiceGUI's ``ui.button`` is a Quasar QBtn whose color classes (bg-primary /
+    text-primary) resist our theme overrides, so action buttons use a raw
+    ``<button>`` — the same element the engine chips already use successfully.
+    NiceGUI handles arg count and awaits coroutine handlers, matching ui.button.
+    """
+    btn = ui.html(f'<button class="{classes}">{label}</button>')
+    btn.on("click", on_click)
+    return btn
 
 
 def format_timecode(seconds: float) -> str:
@@ -39,15 +52,19 @@ def render_scene_card(
     total_scenes: int,
     aspect: tuple[int, int],
     on_open_frame_picker: Callable[[Scene], None],
-    on_open_trim: Callable[[Scene], None],
-    on_search_click: Callable[[Frame, str], None],
+    on_search_click: Callable[[Scene, str], None],
+    on_download: Callable[[int, str], Awaitable[str]],
+    on_open_folder: Callable[[], None],
+    enabled_ids: list[str],
 ) -> None:
     """Render one scene card.
 
     `aspect` is (width, height) of the source video, used for thumbnail sizing.
+    `on_download(scene_id, url)` downloads the source clip and returns its filename.
+    `on_open_folder()` reveals the job's downloads folder.
+    `enabled_ids` is the enabled-engine id list (read once by the caller).
     """
     selected = [f for f in db.list_frames(scene.id) if f.is_selected]
-    enabled_ids = json.loads(db.get_setting("enabled_engines") or "[]")
 
     with ui.element("div").classes("rrs-scene-card"):
         delta = scene.end_sec - scene.start_sec
@@ -60,10 +77,13 @@ def render_scene_card(
             f'  <span class="rrs-scene-delta rrs-timecode">Δ {delta:.2f}s</span>'
             f"</div>"
         )
-        _render_frame_strip(scene, selected, data_dir, aspect, on_open_frame_picker)
-        for ordinal, f in enumerate(selected):
-            _render_engine_row(f, ordinal, enabled_ids, on_search_click)
-        _render_source_row(db, data_dir, scene, on_open_trim)
+        # Two columns: thumbnail on the left, engines + download stacked on the
+        # right so they fill the space beside the thumbnail (no dead space).
+        with ui.element("div").classes("rrs-scene-body"):
+            _render_frame_strip(scene, selected, data_dir, aspect, on_open_frame_picker)
+            with ui.element("div").classes("rrs-scene-main"):
+                _render_engine_row(scene, enabled_ids, on_search_click)
+                _render_download_row(db, scene, on_download, on_open_folder)
 
 
 def _render_frame_strip(
@@ -73,35 +93,38 @@ def _render_frame_strip(
     aspect: tuple[int, int],
     on_open_frame_picker: Callable[[Scene], None],
 ) -> None:
+    """The scene's single selected frame; clicking it opens the scrubber picker."""
     w, h = aspect
-    style = f'style="aspect-ratio: {w} / {h}"'
+    aspect_style = f"aspect-ratio: {w} / {h}"
     with ui.element("div").classes("rrs-frame-strip"):
-        for ordinal, f in enumerate(selected):
+        if selected:
+            f = selected[0]
             url = file_url(f.path, data_dir)
-            html = (
-                f'<div class="rrs-frame selected" {style}>'
-                f'  <span class="rrs-ord">{ordinal + 1:02d}</span>'
-                f'  <img src="{url}" alt="frame {f.frame_number}">'
-                f"</div>"
-            )
-            container = ui.html(html)
-            container.on("click", lambda _, s=scene: on_open_frame_picker(s))
-        add = ui.html(f'<div class="rrs-frame rrs-frame-add" {style}>+</div>')
-        add.on("click", lambda _, s=scene: on_open_frame_picker(s))
+            # Full frame thumbnail; if a crop is set, mark the region with an overlay.
+            overlay = ""
+            if f.crop is not None:
+                c = f.crop
+                overlay = (
+                    f'<div class="rrs-crop-overlay" style="'
+                    f"left:{c.x * 100:.2f}%;top:{c.y * 100:.2f}%;"
+                    f'width:{c.w * 100:.2f}%;height:{c.h * 100:.2f}%"></div>'
+                )
+            frame = ui.element("div").classes("rrs-frame selected").style(aspect_style)
+            with frame:
+                ui.html(f'<img src="{url}" alt="frame {f.frame_number}">{overlay}')
+            frame.on("click", lambda _, s=scene: on_open_frame_picker(s))
+        else:
+            add = ui.html(f'<div class="rrs-frame rrs-frame-add" style="{aspect_style}">+</div>')
+            add.on("click", lambda _, s=scene: on_open_frame_picker(s))
 
 
 def _render_engine_row(
-    frame: Frame,
-    ordinal: int,
+    scene: Scene,
     enabled_ids: list[str],
-    on_search_click: Callable[[Frame, str], None],
+    on_search_click: Callable[[Scene, str], None],
 ) -> None:
+    """One engine row per scene. Clicking an engine searches the selected frame."""
     with ui.element("div").classes("rrs-engines"):
-        ui.html(
-            f'<span class="rrs-engine-tag" title="search frame {ordinal + 1:02d}">'
-            f"{ordinal + 1:02d}"
-            f"</span>"
-        )
         for eid in enabled_ids:
             engine = get_engine(eid)
             if engine is None:
@@ -111,35 +134,49 @@ def _render_engine_row(
                 f"{engine.name.upper()}"
                 f"</button>"
             )
-            chip.on("click", lambda _, f=frame, e=eid: on_search_click(f, e))
+            chip.on("click", lambda _, s=scene, e=eid: on_search_click(s, e))
 
 
-def _render_source_row(
+def _render_download_row(
     db: Database,
-    data_dir: Path,
     scene: Scene,
-    on_open_trim: Callable[[Scene], None],
+    on_download: Callable[[int, str], Awaitable[str]],
+    on_open_folder: Callable[[], None],
 ) -> None:
+    """Per-card source-url input + download/open buttons + a status line below."""
     src = db.get_source(scene.id)
-    with ui.element("div").classes("rrs-source-row"):
-        inp = ui.input(value=(src.url if src else ""), placeholder="source url").classes(
-            "rrs-input"
-        )
+    with ui.element("div").classes("rrs-download"):
 
-        async def on_download() -> None:
-            from rrs.ui.pages import download_source_for_scene
-
+        async def _go(_=None) -> None:
             url = inp.value.strip()
             if not url:
                 return
-            await download_source_for_scene(db, data_dir, scene.id, url)
-            ui.navigate.reload()
+            status.set_content('<span class="rrs-download-busy">downloading…</span>')
+            try:
+                name = await on_download(scene.id, url)
+            except Exception as exc:  # noqa: BLE001 — surface any failure inline
+                msg = html.escape(str(exc))
+                status.set_content(
+                    f'<span class="rrs-download-err" title="{msg}">✗ failed: {msg}</span>'
+                )
+                return
+            status.set_content(_download_status_html(name))
 
-        ui.button("DOWNLOAD", on_click=on_download).classes("rrs-btn")
-    if src and src.path:
-        with ui.element("div").classes("rrs-status-line"):
-            ui.html(f"<span>source: {Path(src.path).name}</span>")
-            ui.button("TRIM CLIP", on_click=lambda s=scene: on_open_trim(s)).classes("rrs-btn")
-            if src.clip_path:
-                clip_url = file_url(src.clip_path, data_dir)
-                ui.html(f'<a class="rrs-btn" href="{clip_url}" target="_blank">OPEN CLIP</a>')
+        with ui.element("div").classes("rrs-download-row"):
+            inp = ui.input(value=(src.url if src else ""), placeholder="source url").classes(
+                "rrs-input"
+            )
+            html_button("DOWNLOAD", _go)
+            html_button("OPEN FOLDER", on_open_folder)
+
+        status = ui.html(_download_status_html(src.path if src else None)).classes(
+            "rrs-download-status"
+        )
+
+
+def _download_status_html(path: str | None) -> str:
+    if not path:
+        return ""
+    name = html.escape(Path(path).name)
+    full = html.escape(path)
+    return f'<span class="rrs-download-done" title="{full}">✓ downloaded: {name}</span>'

@@ -39,6 +39,16 @@ class Scene:
 
 
 @dataclass(frozen=True)
+class CropRect:
+    """A crop region as fractions (0..1) of the frame's width/height."""
+
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+@dataclass(frozen=True)
 class Frame:
     id: int
     scene_id: int
@@ -47,6 +57,7 @@ class Frame:
     path: str
     imgbb_url: str | None
     is_selected: bool
+    crop: CropRect | None = None
 
 
 @dataclass(frozen=True)
@@ -55,9 +66,6 @@ class Source:
     scene_id: int
     url: str
     path: str | None
-    trim_start_sec: float | None
-    trim_end_sec: float | None
-    clip_path: str | None
 
 
 def _schema_sql() -> str:
@@ -70,6 +78,19 @@ class Database:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         conn.executescript(_schema_sql())
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Apply additive schema changes the idempotent CREATE TABLE can't.
+
+        `schema.sql` uses CREATE TABLE IF NOT EXISTS, so columns added after a
+        DB was first created won't appear. Add any missing ones here; the
+        table_info check makes each ALTER run at most once."""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(frames)")}
+        for col in ("crop_x", "crop_y", "crop_w", "crop_h"):
+            if col not in cols:
+                self._conn.execute(f"ALTER TABLE frames ADD COLUMN {col} REAL")
+        self._conn.commit()
 
     # ---- jobs ----
 
@@ -159,10 +180,40 @@ class Database:
         self._conn.execute("UPDATE frames SET imgbb_url = ? WHERE id = ?", (url, frame_id))
         self._conn.commit()
 
+    def set_frame_image(self, frame_id: int, frame_number: int, path: str) -> None:
+        """Point a frame row at a different extracted frame.
+
+        Clears imgbb_url: the image changed, so any cached imgbb upload is stale
+        and must be re-uploaded on the next reverse search."""
+        self._conn.execute(
+            "UPDATE frames SET frame_number = ?, path = ?, imgbb_url = NULL WHERE id = ?",
+            (frame_number, path, frame_id),
+        )
+        self._conn.commit()
+
     def set_frame_selected(self, frame_id: int, selected: bool) -> None:
         self._conn.execute(
             "UPDATE frames SET is_selected = ? WHERE id = ?", (int(selected), frame_id)
         )
+        self._conn.commit()
+
+    def set_frame_crop(self, frame_id: int, rect: CropRect | None) -> None:
+        """Set (or clear) the frame's crop region.
+
+        Clears imgbb_url: the searched image changed, so any cached upload is
+        stale and must be re-uploaded (cropped) on the next reverse search."""
+        if rect is None:
+            self._conn.execute(
+                "UPDATE frames SET crop_x = NULL, crop_y = NULL, crop_w = NULL,"
+                " crop_h = NULL, imgbb_url = NULL WHERE id = ?",
+                (frame_id,),
+            )
+        else:
+            self._conn.execute(
+                "UPDATE frames SET crop_x = ?, crop_y = ?, crop_w = ?, crop_h = ?,"
+                " imgbb_url = NULL WHERE id = ?",
+                (rect.x, rect.y, rect.w, rect.h, frame_id),
+            )
         self._conn.commit()
 
     # ---- sources ----
@@ -173,8 +224,7 @@ class Database:
         ).fetchone()
         if existing:
             self._conn.execute(
-                "UPDATE sources SET url = ?, path = NULL, trim_start_sec = NULL,"
-                " trim_end_sec = NULL, clip_path = NULL WHERE id = ?",
+                "UPDATE sources SET url = ?, path = NULL WHERE id = ?",
                 (url, existing["id"]),
             )
             self._conn.commit()
@@ -191,19 +241,6 @@ class Database:
 
     def set_source_downloaded(self, source_id: int, path: str) -> None:
         self._conn.execute("UPDATE sources SET path = ? WHERE id = ?", (path, source_id))
-        self._conn.commit()
-
-    def set_source_clip(
-        self,
-        source_id: int,
-        trim_start_sec: float,
-        trim_end_sec: float,
-        clip_path: str,
-    ) -> None:
-        self._conn.execute(
-            "UPDATE sources SET trim_start_sec = ?, trim_end_sec = ?, clip_path = ? WHERE id = ?",
-            (trim_start_sec, trim_end_sec, clip_path, source_id),
-        )
         self._conn.commit()
 
     # ---- settings ----
@@ -248,6 +285,8 @@ class Database:
 
     @staticmethod
     def _row_to_frame(r: sqlite3.Row) -> Frame:
+        cx, cy, cw, ch = r["crop_x"], r["crop_y"], r["crop_w"], r["crop_h"]
+        crop = CropRect(cx, cy, cw, ch) if None not in (cx, cy, cw, ch) else None
         return Frame(
             id=r["id"],
             scene_id=r["scene_id"],
@@ -256,6 +295,7 @@ class Database:
             path=r["path"],
             imgbb_url=r["imgbb_url"],
             is_selected=bool(r["is_selected"]),
+            crop=crop,
         )
 
     @staticmethod
@@ -265,9 +305,6 @@ class Database:
             scene_id=r["scene_id"],
             url=r["url"],
             path=r["path"],
-            trim_start_sec=r["trim_start_sec"],
-            trim_end_sec=r["trim_end_sec"],
-            clip_path=r["clip_path"],
         )
 
 
