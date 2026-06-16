@@ -180,3 +180,34 @@ def _download_status_html(path: str | None) -> str:
     name = html.escape(Path(path).name)
     full = html.escape(path)
     return f'<span class="rrs-download-done" title="{full}">✓ downloaded: {name}</span>'
+
+
+def render_extra_downloader(on_download: Callable[[str], Awaitable[str]]) -> None:
+    """Bottom-of-page box to download any extra clip into the active job's folder.
+
+    `on_download(url)` downloads the clip and returns its saved filename, or raises.
+    """
+    with ui.element("div").classes("rrs-download rrs-extra-download"):
+        ui.html('<div class="rrs-label">Download an extra clip</div>')
+
+        async def _go(_=None) -> None:
+            url = inp.value.strip()
+            if not url:
+                return
+            status.set_content('<span class="rrs-download-busy">downloading…</span>')
+            try:
+                name = await on_download(url)
+            except Exception as exc:  # noqa: BLE001 — surface any failure inline
+                msg = html.escape(str(exc))
+                status.set_content(
+                    f'<span class="rrs-download-err" title="{msg}">✗ failed: {msg}</span>'
+                )
+                return
+            inp.value = ""
+            status.set_content(_download_status_html(name))
+
+        with ui.element("div").classes("rrs-download-row"):
+            inp = ui.input(placeholder="clip url").classes("rrs-input")
+            html_button("DOWNLOAD", _go)
+
+        status = ui.html("").classes("rrs-download-status")
