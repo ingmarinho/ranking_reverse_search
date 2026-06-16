@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import html
 import json
 import os
 import shutil
@@ -154,12 +153,10 @@ def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
             on_open_folder=lambda: _open_downloads_folder(db, cfg.data_dir, job),
             enabled_ids=enabled_ids,
         )
-    folder = resolve_download_dir(db, cfg.data_dir, job)
-    ui.html(
-        f'<div class="rrs-meta" style="margin-top:10px">Downloads → '
-        f"{html.escape(str(folder))}</div>"
+    render_extra_downloader(
+        on_download=lambda url: download_extra_clip(db, cfg.data_dir, url),
+        on_open_folder=lambda: _open_downloads_folder(db, cfg.data_dir, job),
     )
-    render_extra_downloader(on_download=lambda url: download_extra_clip(db, cfg.data_dir, url))
 
 
 async def _open_frame_picker(db: Database, cfg: Config, scene: Scene) -> None:
