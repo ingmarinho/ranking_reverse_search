@@ -36,13 +36,45 @@ _INFLIGHT: set[int] = set()
 def register_pages(get_db: GetDb, get_cfg: GetCfg) -> None:
     @ui.page("/")
     async def index() -> None:
-        _render_wizard(get_db(), get_cfg())
+        db = get_db()
+        _render_wizard(db, get_cfg())
+        # Single page-scoped poller drives progress updates. Lives in the page
+        # slot (not the refreshable's), so a refresh never deletes it — avoids
+        # the self-deleting-timer race that crashed `once=True` timers created
+        # inside `_render_wizard`.
+        ui.timer(1.0, lambda: _poll_progress(db))
 
 
 def _find_active_job(db: Database) -> Job | None:
     """Return the most recent non-deleted job, or None."""
     row = db._conn.execute("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").fetchone()
     return db.get_job(row["id"]) if row else None
+
+
+_TRANSIENT_STATUSES = (
+    JobStatus.DOWNLOADING,
+    JobStatus.DETECTING_SCENES,
+    JobStatus.EXTRACTING_FRAMES,
+)
+
+
+# Status the wizard last *rendered* for a given job, so the poller can detect
+# when the live job has moved on (e.g. detecting_scenes → interactive) and
+# refresh exactly once per transition.
+_RENDERED_STATUS: dict[int, JobStatus] = {}
+
+
+def _poll_progress(db: Database) -> None:
+    """Advance the wizard when the active job's live status has moved past what
+    is currently on screen (downloading → … → interactive), without a page
+    reload. The progress bar within a single stage is CSS-animated, so no
+    per-tick refresh is needed while the status is unchanged; no active job is a
+    no-op so the interactive view isn't disturbed."""
+    job = _find_active_job(db)
+    if job is None:
+        return
+    if _RENDERED_STATUS.get(job.id) != job.status:
+        _render_wizard.refresh()
 
 
 @ui.refreshable
@@ -56,22 +88,33 @@ def _render_wizard(db: Database, cfg: Config) -> None:
         render_onboarding(db, cfg, on_ready=_render_wizard.refresh)
         return
     with ui.element("div").classes("rrs-wrap"):
-        with ui.row().classes("w-full items-center").style("justify-content:space-between"):
+        with (
+            ui.row()
+            .classes("w-full items-center rrs-header")
+            .style("justify-content:space-between")
+        ):
             ui.html('<div class="rrs-title">Ranking Reverse Search</div>')
-            html_button(
-                "API KEY",
-                lambda: open_imgbb_settings(db, cfg, on_change=_render_wizard.refresh),
-                classes="rrs-btn",
-            )
+            # Hide the settings button while a worker is driving the job through a
+            # transient stage — it's clutter during download/processing and the
+            # key can't usefully be changed mid-pipeline.
+            if job is None or job.status not in _TRANSIENT_STATUSES:
+                html_button(
+                    "API KEY",
+                    lambda: open_imgbb_settings(db, cfg, on_change=_render_wizard.refresh),
+                    classes="rrs-btn",
+                )
         if job is None:
             _render_url_input(db, cfg)
             return
+        # Record what we're about to render so the poller can spot the next
+        # status transition and refresh.
+        _RENDERED_STATUS[job.id] = job.status
         _render_for_status(db, cfg, job)
 
 
 def _render_url_input(db: Database, cfg: Config) -> None:
-    ui.html('<div class="rrs-label" style="margin-bottom:8px">Paste ranking video URL</div>')
-    with ui.row().classes("w-full"):
+    ui.html('<div class="rrs-label" style="margin-bottom:6px">Paste ranking video URL</div>')
+    with ui.row().classes("w-full items-stretch rrs-url-row"):
         url_input = ui.input(placeholder="https://...").classes("rrs-input").style("flex:1")
 
         async def on_click() -> None:
@@ -106,14 +149,10 @@ def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
         ui.html(f'<div class="rrs-error">{(job.error or "Unknown error")}</div>')
         html_button("START OVER", lambda: _start_over(db, cfg.data_dir, job.id))
         return
-    if status in (
-        JobStatus.DOWNLOADING,
-        JobStatus.DETECTING_SCENES,
-        JobStatus.EXTRACTING_FRAMES,
-    ):
+    if status in _TRANSIENT_STATUSES:
         if job.id in _INFLIGHT:
             _render_progress(job)
-            ui.timer(1.0, _render_wizard.refresh, once=True)
+            # Progress refresh is driven by the page-scoped poller in `index()`.
         else:
             _render_progress(job)
             ui.html(
@@ -292,4 +331,5 @@ def _start_over(db: Database, data_dir: Path, job_id: int) -> None:
     if paths.root.exists():
         shutil.rmtree(paths.root, ignore_errors=True)
     db.delete_job(job_id)
+    _RENDERED_STATUS.pop(job_id, None)
     _render_wizard.refresh()
