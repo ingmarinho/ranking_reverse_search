@@ -352,6 +352,32 @@ body::before {
 }
 /* The interactive_image SVG layer is unused for cropping now. */
 .rrs-scrub-preview svg { pointer-events: none; }
+/* Client-side crop overlay (move + corner-resize). */
+.rrs-crop-overlay {
+  position: absolute; inset: 0; z-index: 2;
+  cursor: crosshair; touch-action: none;
+}
+.rrs-crop-box {
+  position: absolute; box-sizing: border-box;
+  border: 1px solid #fff;
+  background: rgba(255, 255, 255, 0.12);
+  cursor: move; display: none;
+}
+.rrs-crop-handle {
+  position: absolute; width: 10px; height: 10px;
+  background: var(--bg); border: 1px solid var(--accent);
+  box-sizing: border-box;
+}
+.rrs-crop-handle[data-handle="nw"] { left: -5px; top: -5px; cursor: nwse-resize; }
+.rrs-crop-handle[data-handle="ne"] { right: -5px; top: -5px; cursor: nesw-resize; }
+.rrs-crop-handle[data-handle="sw"] { left: -5px; bottom: -5px; cursor: nesw-resize; }
+.rrs-crop-handle[data-handle="se"] { right: -5px; bottom: -5px; cursor: nwse-resize; }
+.rrs-crop-size {
+  position: absolute; left: 2px; bottom: 2px;
+  font-size: 10px; color: #fff; background: rgba(0, 0, 0, 0.5);
+  padding: 0 3px; pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
 .rrs-scrub-label {
   margin-top: 10px;
   font-size: 12px; color: var(--text-dim);
