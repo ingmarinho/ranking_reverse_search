@@ -1,0 +1,83 @@
+name: Build bundles
+
+# Builds standalone rrs desktop bundles for Windows, macOS (Apple Silicon +
+# Intel) and Linux. PyInstaller can't cross-compile, so each target builds on
+# its own native runner via scripts/pack.py (the same script you run locally).
+#
+# Triggers:
+#   - push a tag like v1.0.0  -> builds all targets and attaches the zips to the
+#                                GitHub Release for that tag
+#   - "Run workflow" button   -> builds all targets, zips uploaded as run artifacts
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# Allow the tag build to create/update the Release and upload assets.
+permissions:
+  contents: write
+
+# A newer tag/run supersedes an in-flight one.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x64
+          - os: macos-latest # Apple Silicon (arm64)
+            target: macos-arm64
+          - os: macos-13 # Intel (x86_64)
+            target: macos-x64
+          - os: ubuntu-latest
+            target: linux-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # yt-dlp needs a JS runtime to solve YouTube's nsig challenge; pack.py
+      # bundles whatever `deno` is on PATH.
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # Static ffmpeg + ffprobe on PATH, so the bundled copies run on machines
+      # without a system ffmpeg (a dynamically-linked one would not).
+      - name: Install static ffmpeg + ffprobe
+        uses: federicocarboni/setup-ffmpeg@v3
+
+      - name: Install Python dependencies
+        run: python -m pip install -e ".[dev]" pyinstaller
+
+      - name: Build bundle
+        run: python scripts/pack.py
+
+      # shutil.make_archive zips identically on every OS (no zip/Compress-Archive split).
+      - name: Zip bundle
+        run: python -c "import shutil; shutil.make_archive('rrs-${{ matrix.target }}', 'zip', 'dist/rrs-app')"
+
+      - name: Upload run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rrs-${{ matrix.target }}
+          path: rrs-${{ matrix.target }}.zip
+
+      - name: Attach to Release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: rrs-${{ matrix.target }}.zip
