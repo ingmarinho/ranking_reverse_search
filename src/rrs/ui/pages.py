@@ -16,7 +16,11 @@ from rrs.pipeline.download import download_video
 from rrs.pipeline.engines import get_engine
 from rrs.pipeline.frames import crop_image, get_video_dimensions
 from rrs.pipeline.hosting import ImgbbError, upload_image
-from rrs.pipeline.jobs import downloads_dir, job_paths, run_pre_interactive_pipeline
+from rrs.pipeline.jobs import (
+    job_paths,
+    resolve_download_dir,
+    run_pre_interactive_pipeline,
+)
 from rrs.store.db import Database, Frame, Job, JobStatus, Scene
 from rrs.ui.components import html_button, render_scene_card
 from rrs.ui.modals import open_frame_picker
@@ -145,7 +149,7 @@ def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
             on_open_frame_picker=lambda s: _open_frame_picker(db, cfg, s),
             on_search_click=lambda s, eid: _do_reverse_search(db, cfg, s, eid),
             on_download=lambda sid, url: download_source_for_scene(db, cfg.data_dir, sid, url),
-            on_open_folder=lambda: _open_downloads_folder(cfg.data_dir, job),
+            on_open_folder=lambda: _open_downloads_folder(db, cfg.data_dir, job),
             enabled_ids=enabled_ids,
         )
 
@@ -216,7 +220,7 @@ async def download_source_for_scene(db: Database, data_dir: Path, scene_id: int,
     scene = next((s for s in db.list_scenes(job.id) if s.id == scene_id), None) if job else None
     if scene is None or job is None:
         raise RuntimeError("scene not found")
-    out_dir = downloads_dir(data_dir, job.title, job.id)
+    out_dir = resolve_download_dir(db, data_dir, job)
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"scene-{scene.idx + 1:02d}.mp4"
 
@@ -226,9 +230,9 @@ async def download_source_for_scene(db: Database, data_dir: Path, scene_id: int,
     return Path(result.path).name
 
 
-def _open_downloads_folder(data_dir: Path, job: Job) -> None:
+def _open_downloads_folder(db: Database, data_dir: Path, job: Job) -> None:
     """Reveal the job's downloads folder in the OS file manager (local app)."""
-    folder = downloads_dir(data_dir, job.title, job.id)
+    folder = resolve_download_dir(db, data_dir, job)
     folder.mkdir(parents=True, exist_ok=True)
     try:
         if sys.platform == "darwin":
