@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import html
-import json
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -56,15 +55,16 @@ def render_scene_card(
     on_search_click: Callable[[Scene, str], None],
     on_download: Callable[[int, str], Awaitable[str]],
     on_open_folder: Callable[[], None],
+    enabled_ids: list[str],
 ) -> None:
     """Render one scene card.
 
     `aspect` is (width, height) of the source video, used for thumbnail sizing.
     `on_download(scene_id, url)` downloads the source clip and returns its filename.
     `on_open_folder()` reveals the job's downloads folder.
+    `enabled_ids` is the enabled-engine id list (read once by the caller).
     """
     selected = [f for f in db.list_frames(scene.id) if f.is_selected]
-    enabled_ids = json.loads(db.get_setting("enabled_engines") or "[]")
 
     with ui.element("div").classes("rrs-scene-card"):
         delta = scene.end_sec - scene.start_sec

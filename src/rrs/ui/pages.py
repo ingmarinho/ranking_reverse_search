@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 import subprocess
@@ -133,6 +134,7 @@ def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
 
     aspect = get_video_dimensions(Path(job.source_path)) if job.source_path else (16, 9)
     scenes = db.list_scenes(job.id)
+    enabled_ids = json.loads(db.get_setting("enabled_engines") or "[]")
     for scene in scenes:
         render_scene_card(
             db=db,
@@ -144,6 +146,7 @@ def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
             on_search_click=lambda s, eid: _do_reverse_search(db, cfg, s, eid),
             on_download=lambda sid, url: download_source_for_scene(db, cfg.data_dir, sid, url),
             on_open_folder=lambda: _open_downloads_folder(cfg.data_dir, job),
+            enabled_ids=enabled_ids,
         )
 
 
