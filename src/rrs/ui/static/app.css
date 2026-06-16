@@ -330,15 +330,28 @@ body::before {
 
 /* Frame picker scrubber. The preview holds the full frame; drag a box over it
    to mark a crop region (drawn as an SVG overlay by interactive_image). */
-.rrs-scrub-preview {
-  width: 100%;
-  max-height: 60vh;
+/* Wrapper shrink-wraps the displayed image so the crop overlay (absolute,
+   inset:0) is pixel-aligned with it. */
+.rrs-crop-wrap {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
   background: var(--surface);
   border: 1px solid var(--border);
-  overflow: auto;
-  cursor: crosshair;
 }
-.rrs-scrub-preview img { display: block; margin: 0 auto; }
+/* The interactive_image root must also shrink-wrap its <img> so the wrapper's
+   width equals the displayed image width and the overlay (inset:0) aligns. */
+.rrs-scrub-preview { display: block; width: fit-content; max-width: 100%; }
+.rrs-scrub-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  width: auto;
+  height: auto;
+}
+/* The interactive_image SVG layer is unused for cropping now. */
+.rrs-scrub-preview svg { pointer-events: none; }
 .rrs-scrub-label {
   margin-top: 10px;
   font-size: 12px; color: var(--text-dim);
