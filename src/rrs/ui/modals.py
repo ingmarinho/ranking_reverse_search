@@ -5,6 +5,7 @@ import html
 import json
 import shutil
 from collections.abc import Callable
+from dataclasses import asdict
 from pathlib import Path
 
 from nicegui import ui
@@ -53,12 +54,12 @@ _CROP_JS = """
 window.rrsCrop = window.rrsCrop || {
   instances: {},
   set(id, rect) { const i = this.instances[id]; if (i) i.set(rect); },
-  init(elId, initial) {
+  init(elId, initial, minCrop) {
     const overlay = document.getElementById('c' + elId);
     if (!overlay) return;
     const box = overlay.querySelector('.rrs-crop-box');
     const size = overlay.querySelector('.rrs-crop-size');
-    const MIN = 0.01;
+    const MIN = minCrop;
     const clamp01 = (v) => Math.max(0, Math.min(1, v));
     const inst = { rect: initial || null, drag: null };
     this.instances[elId] = inst;
@@ -275,8 +276,10 @@ async def open_frame_picker(
                 html_button("USE THIS FRAME", _commit, classes="rrs-btn rrs-btn-primary")
 
     dialog.open()
-    ui.run_javascript(_CROP_JS)
     c = state["crop"]
-    initial_crop = "null" if c is None else json.dumps({"x": c.x, "y": c.y, "w": c.w, "h": c.h})
-    ui.run_javascript(f"window.rrsCrop.init({overlay.id}, {initial_crop})")
+    initial_crop = "null" if c is None else json.dumps(asdict(c))
+    # Send the module (idempotent) and init in one round-trip so the guard and
+    # init always run in the same microtask. _MIN_CROP is the single source of
+    # truth for the stray-click threshold, passed through to the overlay.
+    ui.run_javascript(f"{_CROP_JS}\nwindow.rrsCrop.init({overlay.id}, {initial_crop}, {_MIN_CROP})")
     await _show(state["fn"])
