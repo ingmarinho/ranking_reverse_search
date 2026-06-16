@@ -60,6 +60,15 @@ def test_download_video_best_when_max_height_none(fake_ydl, tmp_path):
     assert fake_ydl["opts"]["format"] == "bv*+ba/b"
 
 
+def test_download_enables_ejs_remote_components(fake_ydl, tmp_path):
+    # Regression for B2: yt-dlp gates the YouTube JS challenge solver script
+    # behind remote_components; without ejs:github the solver is skipped and
+    # downloads 403 even with deno installed.
+    out = tmp_path / "source.mp4"
+    download_video(url="x", out_path=out, max_height=None)
+    assert "ejs:github" in fake_ydl["opts"]["remote_components"]
+
+
 def test_download_video_progress_hook_invoked(fake_ydl, tmp_path):
     received = []
 

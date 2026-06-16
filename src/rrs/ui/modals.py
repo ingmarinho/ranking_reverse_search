@@ -11,6 +11,7 @@ from nicegui.events import KeyEventArguments, MouseEventArguments
 
 from rrs.pipeline.frames import FrameExtractError, extract_frame, get_video_dimensions
 from rrs.pipeline.jobs import job_paths
+from rrs.pipeline.scenes import last_selectable_frame
 from rrs.store.db import CropRect, Database, Scene
 from rrs.ui.components import file_url, html_button
 
@@ -40,7 +41,11 @@ async def open_frame_picker(
     if not frames:
         return
     frame_row = frames[0]
-    start, end = scene.start_frame, scene.end_frame
+    # `end` is the last *selectable* frame: scene.end_frame is exclusive (the
+    # first frame of the next scene, and one past EOF for the final scene), so
+    # scrubbing to it would request an undecodable frame. See last_selectable_frame.
+    start = scene.start_frame
+    end = last_selectable_frame(scene.start_frame, scene.end_frame)
     # Canonical selected-frame file (what the scene card shows). We never write it
     # while scrubbing — previews go to a temp file — so cancel reverts cleanly.
     out_path = paths.frames_dir / str(scene.idx) / "0.jpg"

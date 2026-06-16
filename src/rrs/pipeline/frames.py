@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 
@@ -8,6 +10,36 @@ import cv2
 
 class FrameExtractError(RuntimeError):
     pass
+
+
+def _atomic_imwrite(out_path: Path, img) -> None:
+    """Write `img` to `out_path` as JPEG without ever exposing a partial file.
+
+    cv2.imwrite truncates then rewrites in place. These files are served over
+    /_data, so a file overwritten while an HTTP response is streaming it shrinks
+    mid-flight — which uvicorn reports as "Response content shorter than
+    Content-Length" (B3). Instead we write to a unique temp file in the same
+    directory and os.replace it into place: the rename is atomic, in-flight
+    readers keep the intact old file until the swap, and concurrent writers (the
+    overlapping scrub extractions that all target one path) never clobber each
+    other's temp."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    # Encode by format, not by filename — the temp file's extension is ".tmp", so
+    # cv2.imwrite couldn't infer the JPEG codec from it.
+    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 88])
+    if not ok:
+        raise FrameExtractError(f"failed to encode {out_path}")
+    fd, tmp = tempfile.mkstemp(dir=out_path.parent, prefix=f"{out_path.stem}-", suffix=".tmp")
+    tmp_path = Path(tmp)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            # buf is a uint8 ndarray; write it via the buffer protocol directly
+            # rather than copying the whole encoded image out with .tobytes().
+            f.write(buf)
+        os.replace(tmp_path, out_path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 
 @lru_cache(maxsize=32)
@@ -39,10 +71,7 @@ def extract_frame(video_path: Path, frame_number: int, out_path: Path) -> Path:
             raise FrameExtractError(f"could not read frame {frame_number} from {video_path}")
     finally:
         cap.release()
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    ok = cv2.imwrite(str(out_path), frame, [cv2.IMWRITE_JPEG_QUALITY, 88])
-    if not ok:
-        raise FrameExtractError(f"failed to write {out_path}")
+    _atomic_imwrite(out_path, frame)
     return out_path
 
 
@@ -62,7 +91,5 @@ def crop_image(
     y0 = max(0, min(h - 1, round(y * h)))
     x1 = max(x0 + 1, min(w, round((x + cw) * w)))
     y1 = max(y0 + 1, min(h, round((y + ch) * h)))
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    if not cv2.imwrite(str(out_path), img[y0:y1, x0:x1], [cv2.IMWRITE_JPEG_QUALITY, 88]):
-        raise FrameExtractError(f"failed to write {out_path}")
+    _atomic_imwrite(out_path, img[y0:y1, x0:x1])
     return out_path

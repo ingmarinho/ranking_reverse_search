@@ -15,6 +15,18 @@ class SceneRow:
     end_sec: float
 
 
+def last_selectable_frame(start_frame: int, end_frame: int) -> int:
+    """The last frame index that actually belongs to a scene.
+
+    PySceneDetect scene boundaries are half-open: ``end_frame`` is the *first*
+    frame of the next scene, and for the final scene it equals the video's frame
+    count — i.e. one past the last decodable frame. The highest index the frame
+    picker may request (and the slider's max) is therefore ``end_frame - 1``,
+    never ``end_frame`` itself. Clamped so a degenerate scene never drops below
+    its start frame."""
+    return max(start_frame, end_frame - 1)
+
+
 def detect_scenes(video_path: Path, threshold: float = 27.0) -> list[SceneRow]:
     video = open_video(str(video_path))
     sm = SceneManager()

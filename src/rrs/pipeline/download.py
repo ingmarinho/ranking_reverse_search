@@ -55,6 +55,11 @@ def download_video(
         "progress_hooks": [_hook],
         "quiet": True,
         "noprogress": True,
+        # Permit yt-dlp to fetch the YouTube JS challenge-solver script. Recent
+        # yt-dlp gates this behind remote_components; without it the solver (run
+        # via Deno) is skipped, the nsig challenge fails, and downloads 403 even
+        # when Deno is installed. "ejs:github" is yt-dlp's recommended source.
+        "remote_components": ["ejs:github"],
     }
 
     try:
