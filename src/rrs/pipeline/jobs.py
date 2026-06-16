@@ -64,6 +64,18 @@ def resolve_download_dir(db: Database, data_dir: Path, job: Job) -> Path:
     return candidate
 
 
+def next_extra_path(folder: Path) -> Path:
+    """Return the next free `extra-NN.mp4` in `folder` (numbering past the highest
+    existing index, so gaps are never reused)."""
+    highest = 0
+    if folder.exists():
+        for p in folder.glob("extra-*.mp4"):
+            m = re.fullmatch(r"extra-(\d+)", p.stem)
+            if m:
+                highest = max(highest, int(m.group(1)))
+    return folder / f"extra-{highest + 1:02d}.mp4"
+
+
 def _set_status(db: Database, job_id: int, status: JobStatus, hook: StatusHook | None):
     db.update_job_status(job_id, status)
     if hook:

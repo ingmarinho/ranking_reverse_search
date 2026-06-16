@@ -8,6 +8,7 @@ import pytest
 from rrs.pipeline.download import DownloadError
 from rrs.pipeline.jobs import (
     job_paths,
+    next_extra_path,
     resolve_download_dir,
     run_pre_interactive_pipeline,
     safe_dirname,
@@ -158,3 +159,21 @@ def test_resolve_download_dir_chained_collision(db, tmp_path):
     db.set_job_source(job_id, title="My Video", duration_sec=1.0, source_path="/s.mp4")
     d = resolve_download_dir(db, tmp_path, db.get_job(job_id))
     assert d == tmp_path / "downloads" / "My Video (3)"
+
+
+def test_next_extra_path_numbers_sequentially(tmp_path):
+    folder = tmp_path / "downloads" / "My Video"
+    folder.mkdir(parents=True)
+    assert next_extra_path(folder) == folder / "extra-01.mp4"
+    (folder / "extra-01.mp4").touch()
+    assert next_extra_path(folder) == folder / "extra-02.mp4"
+    # Gaps are ignored — numbering continues past the highest existing index:
+    (folder / "extra-05.mp4").touch()
+    assert next_extra_path(folder) == folder / "extra-06.mp4"
+
+
+def test_next_extra_path_ignores_scene_clips(tmp_path):
+    folder = tmp_path / "downloads" / "My Video"
+    folder.mkdir(parents=True)
+    (folder / "scene-01.mp4").touch()
+    assert next_extra_path(folder) == folder / "extra-01.mp4"
