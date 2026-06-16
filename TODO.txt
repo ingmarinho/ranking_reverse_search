@@ -20,12 +20,14 @@ GROUP B — Download management
       same title that was used in the past
 
 ==============================================================================
-GROUP C — imgbb key & onboarding
+GROUP C — imgbb key & onboarding  [DONE: merged to main 2026-06-16]
 ==============================================================================
-- F4: allow setting the imgbb API key inside the webapp somewhere instead of
-      having to supply it beforehand. Make it easier to use. Make the software
+- [DONE] F4: allow setting the imgbb API key inside the webapp somewhere instead
+      of having to supply it beforehand. Make it easier to use. Make the software
       unusable without an imgbb key. Save the key in the browser (cookie /
       localStorage) or on disk in a file.
+      → Implemented: onboarding gate + settings dialog, key stored in the
+        settings table (DB overrides IMGBB_API_KEY env), live validation.
 
 ==============================================================================
 GROUP D — Bugs 
