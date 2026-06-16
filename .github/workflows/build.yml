@@ -73,8 +73,9 @@ jobs:
           chmod +x "$HOME/ffmpeg-bin/ffmpeg" "$HOME/ffmpeg-bin/ffprobe"
           echo "$HOME/ffmpeg-bin" >> "$GITHUB_PATH"
 
+      # No [dev] extra: this job only builds, never tests or lints.
       - name: Install Python dependencies
-        run: python -m pip install -e ".[dev]" pyinstaller
+        run: python -m pip install -e . pyinstaller
 
       - name: Build bundle
         run: python scripts/pack.py

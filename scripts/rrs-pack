@@ -10,5 +10,4 @@
 # Prereqs: pip install -e ".[dev]" pyinstaller
 
 set -euo pipefail
-cd "$(dirname "$0")/.."
-exec "${PYTHON:-python}" scripts/pack.py "$@"
+exec "${PYTHON:-python}" "$(dirname "$0")/pack.py" "$@"

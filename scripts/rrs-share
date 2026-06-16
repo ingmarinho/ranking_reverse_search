@@ -39,12 +39,10 @@ if [ -z "${IMGBB_API_KEY:-}" ]; then
 fi
 
 APP_PID=""
-TUNNEL_PID=""
 
 cleanup() {
   echo
   echo "shutting down…"
-  [ -n "$TUNNEL_PID" ] && kill "$TUNNEL_PID" 2>/dev/null || true
   [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null || true
   wait 2>/dev/null || true
 }
@@ -55,27 +53,19 @@ PORT="$PORT" rrs &
 APP_PID=$!
 
 # Wait for the app to accept connections before opening the tunnel.
+ready=false
 for _ in $(seq 1 60); do
-  if curl -sf -o /dev/null "$URL"; then
-    break
-  fi
+  curl -sf -o /dev/null "$URL" && { ready=true; break; }
   if ! kill -0 "$APP_PID" 2>/dev/null; then
     echo "error: rrs exited before it came up." >&2
     exit 1
   fi
   sleep 0.5
 done
-
-if ! curl -sf -o /dev/null "$URL"; then
-  echo "error: rrs did not become reachable on ${URL} within 30s." >&2
-  exit 1
-fi
+$ready || { echo "error: rrs did not become reachable on ${URL} within 30s." >&2; exit 1; }
 
 echo "opening Cloudflare tunnel — your public link appears below (look for *.trycloudflare.com):"
 echo "------------------------------------------------------------------------------------------"
-# Run in the foreground so its URL banner streams to the terminal and Ctrl-C
-# reaches it; the trap tears down the app afterwards.
-cloudflared tunnel --url "$URL" &
-TUNNEL_PID=$!
-
-wait "$TUNNEL_PID"
+# Foreground so its URL banner streams to the terminal and Ctrl-C reaches it; the
+# EXIT trap tears down the app afterwards.
+cloudflared tunnel --url "$URL"

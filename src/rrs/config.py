@@ -14,18 +14,24 @@ class MissingDependencyError(RuntimeError):
     """Raised when a required external binary is missing at startup."""
 
 
+# Subdir of the PyInstaller bundle where ffmpeg/ffprobe/deno are shipped. This is
+# a producer/consumer contract: scripts/pack.py writes the binaries here and
+# _activate_bundled_binaries() reads them — keep it as one source of truth.
+BUNDLED_BIN_SUBDIR = "bin"
+
+
 def _activate_bundled_binaries() -> None:
-    """Prepend a PyInstaller-bundled `bin/` dir to PATH, if present.
+    """Prepend the PyInstaller-bundled binary dir to PATH, if present.
 
     When frozen, PyInstaller sets `sys._MEIPASS` to the dir holding bundled
-    resources. scripts/rrs-pack drops ffmpeg/ffprobe/deno under `bin/` there;
-    putting it on PATH lets `shutil.which` (and yt-dlp's deno lookup) find the
-    bundled copies. No-op in a normal source run, so testers without a global
+    resources. scripts/pack.py drops ffmpeg/ffprobe/deno under BUNDLED_BIN_SUBDIR
+    there; putting it on PATH lets `shutil.which` (and yt-dlp's deno lookup) find
+    the bundled copies. No-op in a normal source run, so testers without a global
     ffmpeg install still work. Safe to call more than once."""
     base = getattr(sys, "_MEIPASS", None)
     if base is None:
         return
-    bin_dir = Path(base) / "bin"
+    bin_dir = Path(base) / BUNDLED_BIN_SUBDIR
     if bin_dir.is_dir():
         os.environ["PATH"] = os.pathsep.join([str(bin_dir), os.environ.get("PATH", "")])
 

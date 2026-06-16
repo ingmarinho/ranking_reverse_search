@@ -41,6 +41,8 @@ def main() -> int:
     try:
         import nicegui
         import PyInstaller.__main__ as pyinstaller
+
+        from rrs.config import BUNDLED_BIN_SUBDIR
     except ImportError as exc:
         print(
             f'error: {exc.name} not installed. Run: pip install -e ".[dev]" pyinstaller',
@@ -76,7 +78,7 @@ def main() -> int:
         ]
     )
 
-    bin_dir = REPO / "dist" / "rrs-app" / "_internal" / "bin"
+    bin_dir = REPO / "dist" / "rrs-app" / "_internal" / BUNDLED_BIN_SUBDIR
     bin_dir.mkdir(parents=True, exist_ok=True)
     print(f"==> bundling native binaries into {bin_dir}")
     missing = []
