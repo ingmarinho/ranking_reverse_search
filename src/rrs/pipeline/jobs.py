@@ -9,7 +9,7 @@ from pathlib import Path
 from rrs.pipeline.download import download_video
 from rrs.pipeline.frames import extract_frame
 from rrs.pipeline.scenes import detect_scenes
-from rrs.store.db import Database, JobStatus
+from rrs.store.db import Database, Job, JobStatus
 
 StatusHook = Callable[[JobStatus], None]
 ProgressHook = Callable[[float], None]
@@ -40,9 +40,28 @@ def safe_dirname(title: str | None, job_id: int) -> str:
     return cleaned[:120] if cleaned else f"job-{job_id}"
 
 
-def downloads_dir(data_dir: Path, title: str | None, job_id: int) -> Path:
-    """Convenient, browsable folder for a job's downloaded source clips."""
-    return Path(data_dir) / "downloads" / safe_dirname(title, job_id)
+def resolve_download_dir(db: Database, data_dir: Path, job: Job) -> Path:
+    """Return the job's download folder, assigning + persisting it on first call.
+
+    Prefers the clean title-based name; appends ' (2)', ' (3)', … only when that
+    name is already taken by another job — taken meaning it exists on disk (e.g. a
+    leftover from a deleted job) or another job's row claims it. The choice is
+    stored on the job so OPEN FOLDER and the download writers always agree."""
+    if job.download_dir:
+        return Path(job.download_dir)
+
+    root = Path(data_dir) / "downloads"
+    base = safe_dirname(job.title, job.id)
+    claimed = db.claimed_download_dirs(exclude_job_id=job.id)
+
+    candidate = root / base
+    n = 2
+    while str(candidate) in claimed or candidate.exists():
+        candidate = root / f"{base} ({n})"
+        n += 1
+
+    db.set_download_dir(job.id, str(candidate))
+    return candidate
 
 
 def _set_status(db: Database, job_id: int, status: JobStatus, hook: StatusHook | None):

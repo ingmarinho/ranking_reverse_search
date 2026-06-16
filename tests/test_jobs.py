@@ -7,8 +7,8 @@ import pytest
 
 from rrs.pipeline.download import DownloadError
 from rrs.pipeline.jobs import (
-    downloads_dir,
     job_paths,
+    resolve_download_dir,
     run_pre_interactive_pipeline,
     safe_dirname,
 )
@@ -105,7 +105,56 @@ def test_safe_dirname_sanitizes_and_falls_back():
     assert safe_dirname(None, 9) == "job-9"
 
 
-def test_downloads_dir_layout(tmp_path):
-    d = downloads_dir(tmp_path, "My Video", 3)
+def test_resolve_download_dir_clean_name_when_free(db, tmp_path):
+    job_id = db.create_job(url="x")
+    db.set_job_source(job_id, title="My Video", duration_sec=1.0, source_path="/s.mp4")
+    job = db.get_job(job_id)
+    d = resolve_download_dir(db, tmp_path, job)
     assert d == tmp_path / "downloads" / "My Video"
-    assert downloads_dir(tmp_path, None, 3) == tmp_path / "downloads" / "job-3"
+    # Persisted on the job row:
+    assert db.get_job(job_id).download_dir == str(d)
+
+
+def test_resolve_download_dir_stable_on_repeat(db, tmp_path):
+    job_id = db.create_job(url="x")
+    db.set_job_source(job_id, title="My Video", duration_sec=1.0, source_path="/s.mp4")
+    first = resolve_download_dir(db, tmp_path, db.get_job(job_id))
+    second = resolve_download_dir(db, tmp_path, db.get_job(job_id))
+    assert first == second
+
+
+def test_resolve_download_dir_suffixes_when_dir_exists_on_disk(db, tmp_path):
+    # Simulate a leftover folder from a prior (deleted) job.
+    (tmp_path / "downloads" / "My Video").mkdir(parents=True)
+    job_id = db.create_job(url="x")
+    db.set_job_source(job_id, title="My Video", duration_sec=1.0, source_path="/s.mp4")
+    d = resolve_download_dir(db, tmp_path, db.get_job(job_id))
+    assert d == tmp_path / "downloads" / "My Video (2)"
+
+
+def test_resolve_download_dir_suffixes_when_claimed_by_other_job(db, tmp_path):
+    other = db.create_job(url="o")
+    db.set_download_dir(other, str(tmp_path / "downloads" / "My Video"))
+    job_id = db.create_job(url="x")
+    db.set_job_source(job_id, title="My Video", duration_sec=1.0, source_path="/s.mp4")
+    d = resolve_download_dir(db, tmp_path, db.get_job(job_id))
+    assert d == tmp_path / "downloads" / "My Video (2)"
+
+
+def test_resolve_download_dir_empty_title_falls_back_to_job_id(db, tmp_path):
+    job_id = db.create_job(url="x")  # title stays None
+    job = db.get_job(job_id)
+    d = resolve_download_dir(db, tmp_path, job)
+    assert d == tmp_path / "downloads" / f"job-{job_id}"
+
+
+def test_resolve_download_dir_chained_collision(db, tmp_path):
+    # "My Video" exists on disk AND "My Video (2)" is claimed by another job
+    # → the next free name is "My Video (3)".
+    (tmp_path / "downloads" / "My Video").mkdir(parents=True)
+    other = db.create_job(url="o")
+    db.set_download_dir(other, str(tmp_path / "downloads" / "My Video (2)"))
+    job_id = db.create_job(url="x")
+    db.set_job_source(job_id, title="My Video", duration_sec=1.0, source_path="/s.mp4")
+    d = resolve_download_dir(db, tmp_path, db.get_job(job_id))
+    assert d == tmp_path / "downloads" / "My Video (3)"
