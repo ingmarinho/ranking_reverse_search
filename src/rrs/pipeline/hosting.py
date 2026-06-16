@@ -22,13 +22,19 @@ class ImgbbError(RuntimeError):
     pass
 
 
-def upload_image(path: Path, api_key: str, timeout: float = 30.0) -> str:
-    encoded = base64.b64encode(Path(path).read_bytes()).decode("ascii")
+def _imgbb_upload(
+    image_b64: str, api_key: str, timeout: float, extra_params: dict | None = None
+) -> dict:
+    """POST a base64 image to imgbb and return the response's `data` object.
+
+    Raises ImgbbError on a transport failure, an error status, or a response
+    missing the expected `data` field.
+    """
     try:
         resp = httpx.post(
             "https://api.imgbb.com/1/upload",
-            params={"key": api_key},
-            data={"image": encoded},
+            params={"key": api_key, **(extra_params or {})},
+            data={"image": image_b64},
             timeout=timeout,
         )
     except httpx.HTTPError as exc:
@@ -38,10 +44,18 @@ def upload_image(path: Path, api_key: str, timeout: float = 30.0) -> str:
         raise ImgbbError(f"imgbb {resp.status_code}: {resp.text[:200]}")
 
     try:
-        url = resp.json()["data"]["url"]
+        return resp.json()["data"]
     except (KeyError, ValueError) as exc:
         raise ImgbbError(f"imgbb malformed response: {resp.text[:200]}") from exc
-    return url
+
+
+def upload_image(path: Path, api_key: str, timeout: float = 30.0) -> str:
+    encoded = base64.b64encode(Path(path).read_bytes()).decode("ascii")
+    data = _imgbb_upload(encoded, api_key, timeout)
+    try:
+        return data["url"]
+    except (KeyError, TypeError) as exc:
+        raise ImgbbError(f"imgbb malformed response: missing url ({data!r:.200})") from exc
 
 
 def validate_imgbb_key(api_key: str, timeout: float = 15.0) -> None:
@@ -50,24 +64,8 @@ def validate_imgbb_key(api_key: str, timeout: float = 15.0) -> None:
     Raises ImgbbError if imgbb rejects the key (or the request fails). On success
     the probe is deleted best-effort; expiration=60 guarantees cleanup regardless.
     """
-    try:
-        resp = httpx.post(
-            "https://api.imgbb.com/1/upload",
-            params={"key": api_key, "expiration": 60},
-            data={"image": _TEST_PNG_B64},
-            timeout=timeout,
-        )
-    except httpx.HTTPError as exc:
-        raise ImgbbError(f"imgbb request failed: {exc}") from exc
-
-    if resp.status_code >= 400:
-        raise ImgbbError(f"imgbb {resp.status_code}: {resp.text[:200]}")
-
-    try:
-        delete_url = resp.json()["data"].get("delete_url")
-    except (KeyError, ValueError) as exc:
-        raise ImgbbError(f"imgbb malformed response: {resp.text[:200]}") from exc
-
+    data = _imgbb_upload(_TEST_PNG_B64, api_key, timeout, {"expiration": 60})
+    delete_url = data.get("delete_url") if isinstance(data, dict) else None
     if delete_url:
         try:
             httpx.get(delete_url, timeout=timeout)

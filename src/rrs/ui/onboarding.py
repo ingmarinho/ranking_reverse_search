@@ -20,6 +20,16 @@ def _mask_key(key: str) -> str:
     return "•" * (len(key) - 4) + key[-4:]
 
 
+def _key_input(placeholder: str):
+    """A masked, full-width text field for entering an imgbb key."""
+    return (
+        ui.input(placeholder=placeholder)
+        .props("type=password")
+        .classes("rrs-input")
+        .style("flex:1")
+    )
+
+
 async def _save_key(db: Database, raw: str, on_done: Callable[[], None]) -> bool:
     """Validate and persist a key. Returns True on success, notifies on failure."""
     key = raw.strip()
@@ -50,12 +60,7 @@ def render_onboarding(db: Database, cfg: Config, on_ready: Callable[[], None]) -
             "(sign in → About → Get API key).</div>"
         )
         with ui.row().classes("w-full"):
-            key_input = (
-                ui.input(placeholder="Paste your imgbb API key")
-                .props("type=password")
-                .classes("rrs-input")
-                .style("flex:1")
-            )
+            key_input = _key_input("Paste your imgbb API key")
 
         async def on_save() -> None:
             await _save_key(db, key_input.value, on_ready)
@@ -74,12 +79,7 @@ def open_imgbb_settings(db: Database, cfg: Config, on_change: Callable[[], None]
             if current:
                 label = _mask_key(current) + (" (set via environment)" if from_env else "")
                 ui.html(f'<div class="rrs-meta" style="margin-bottom:8px">Current: {label}</div>')
-            key_input = (
-                ui.input(placeholder="Enter a new key to replace it")
-                .props("type=password")
-                .classes("rrs-input")
-                .style("flex:1")
-            )
+            key_input = _key_input("Enter a new key to replace it")
 
             async def on_save() -> None:
                 if await _save_key(db, key_input.value, on_change):
