@@ -8,5 +8,7 @@ venv/
 data/
 build/
 dist/
+*.spec
+rrs-*.zip
 .pytest_cache/
 .playwright-mcp/

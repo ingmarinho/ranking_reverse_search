@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from importlib import resources
 from pathlib import Path
 
 from nicegui import app, ui
@@ -24,8 +25,19 @@ def get_cfg() -> Config:
     return _CFG
 
 
+def _static_dir() -> Path:
+    """Filesystem path to the bundled static assets.
+
+    Resolved via importlib.resources rather than `Path(__file__).parent` so it
+    works both from a source checkout and a PyInstaller bundle, where the entry
+    script is relocated and `__file__`-relative paths point at the wrong place.
+    The assets must be shipped at the `rrs/ui/static` package path (see
+    scripts/rrs-pack)."""
+    return Path(str(resources.files("rrs.ui").joinpath("static")))
+
+
 def _serve_static(cfg: Config) -> None:
-    static_dir = Path(__file__).parent / "ui" / "static"
+    static_dir = _static_dir()
     app.add_static_files("/_static", str(static_dir))
     app.add_static_files("/_data", str(cfg.data_dir))
     # ?v=<mtime> so browsers refetch the stylesheet after it changes instead of
@@ -59,4 +71,12 @@ def main() -> None:
 
 
 if __name__ == "__main__" or __name__ == "__mp_main__":
+    # PyInstaller-frozen apps re-exec the binary to spawn multiprocessing workers
+    # (NiceGUI/uvicorn use them). freeze_support() makes a spawned worker run its
+    # worker bootstrap and exit instead of falling through to main() — without it
+    # every worker re-runs main(), tries to rebind the port, and startup
+    # fork-bombs. No-op in a normal (non-frozen) run.
+    from multiprocessing import freeze_support
+
+    freeze_support()
     main()

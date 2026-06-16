@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,6 +12,22 @@ logger = logging.getLogger(__name__)
 
 class MissingDependencyError(RuntimeError):
     """Raised when a required external binary is missing at startup."""
+
+
+def _activate_bundled_binaries() -> None:
+    """Prepend a PyInstaller-bundled `bin/` dir to PATH, if present.
+
+    When frozen, PyInstaller sets `sys._MEIPASS` to the dir holding bundled
+    resources. scripts/rrs-pack drops ffmpeg/ffprobe/deno under `bin/` there;
+    putting it on PATH lets `shutil.which` (and yt-dlp's deno lookup) find the
+    bundled copies. No-op in a normal source run, so testers without a global
+    ffmpeg install still work. Safe to call more than once."""
+    base = getattr(sys, "_MEIPASS", None)
+    if base is None:
+        return
+    bin_dir = Path(base) / "bin"
+    if bin_dir.is_dir():
+        os.environ["PATH"] = os.pathsep.join([str(bin_dir), os.environ.get("PATH", "")])
 
 
 @dataclass(frozen=True)
@@ -23,6 +40,8 @@ class Config:
 
 
 def load_config(probe_ffmpeg: bool = True) -> Config:
+    _activate_bundled_binaries()
+
     data_dir = Path(os.environ.get("DATA_DIR", "./data")).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
 

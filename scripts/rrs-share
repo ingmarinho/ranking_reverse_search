@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+#
+# rrs-share — boot rrs locally and expose it to the internet via a Cloudflare
+# tunnel, so you can hand non-technical testers a single https:// link.
+#
+# The app keeps running on *your* machine (your residential IP), which is what
+# keeps yt-dlp downloads working — a cloud-hosted instance would get blocked by
+# YouTube. The tunnel just forwards a public URL to localhost.
+#
+# IMPORTANT: this exposes a SINGLE shared workspace. Everyone with the link sees
+# and drives the same job. Fine for a casual trial / one tester at a time; not a
+# multi-user product. See README "Sharing with testers".
+#
+# Usage:
+#   scripts/rrs-share              # uses PORT (default 8080)
+#   PORT=9000 scripts/rrs-share
+#
+# Ctrl-C cleans up both the app and the tunnel.
+
+set -euo pipefail
+
+PORT="${PORT:-8080}"
+URL="http://localhost:${PORT}"
+
+if ! command -v cloudflared >/dev/null 2>&1; then
+  echo "error: 'cloudflared' is not installed." >&2
+  echo "  macOS:  brew install cloudflared" >&2
+  echo "  other:  https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" >&2
+  exit 1
+fi
+
+if ! command -v rrs >/dev/null 2>&1; then
+  echo "error: 'rrs' is not on PATH. Run 'pip install -e .' first." >&2
+  exit 1
+fi
+
+if [ -z "${IMGBB_API_KEY:-}" ]; then
+  echo "warning: IMGBB_API_KEY is not set — reverse search will be disabled in the UI." >&2
+fi
+
+APP_PID=""
+TUNNEL_PID=""
+
+cleanup() {
+  echo
+  echo "shutting down…"
+  [ -n "$TUNNEL_PID" ] && kill "$TUNNEL_PID" 2>/dev/null || true
+  [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null || true
+  wait 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+echo "starting rrs on ${URL} …"
+PORT="$PORT" rrs &
+APP_PID=$!
+
+# Wait for the app to accept connections before opening the tunnel.
+for _ in $(seq 1 60); do
+  if curl -sf -o /dev/null "$URL"; then
+    break
+  fi
+  if ! kill -0 "$APP_PID" 2>/dev/null; then
+    echo "error: rrs exited before it came up." >&2
+    exit 1
+  fi
+  sleep 0.5
+done
+
+if ! curl -sf -o /dev/null "$URL"; then
+  echo "error: rrs did not become reachable on ${URL} within 30s." >&2
+  exit 1
+fi
+
+echo "opening Cloudflare tunnel — your public link appears below (look for *.trycloudflare.com):"
+echo "------------------------------------------------------------------------------------------"
+# Run in the foreground so its URL banner streams to the terminal and Ctrl-C
+# reaches it; the trap tears down the app afterwards.
+cloudflared tunnel --url "$URL" &
+TUNNEL_PID=$!
+
+wait "$TUNNEL_PID"

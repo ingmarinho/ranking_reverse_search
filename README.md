@@ -36,6 +36,26 @@ Open <http://localhost:8080>.
    field and click DOWNLOAD (highest available quality).
 4. Click TRIM CLIP to scrub and save the relevant moment.
 
+## Sharing with testers
+
+To let someone try `rrs` without installing anything, run it on your machine and
+expose it through a Cloudflare tunnel:
+
+```sh
+brew install cloudflared          # one-time
+export IMGBB_API_KEY=<your-key>
+scripts/rrs-share                 # boots rrs + prints a public *.trycloudflare.com link
+```
+
+Hand the printed link to a tester; Ctrl-C tears both down. Downloads keep working
+because traffic still originates from *your* IP (a cloud-hosted instance gets
+blocked by YouTube).
+
+**Caveat — single shared workspace.** `rrs` has no per-user state: the "active
+job" is just the most recently created job in the one local database, so everyone
+on the link drives the *same* job and sees the *same* scenes. It won't crash with
+several viewers, but it's meant for one tester at a time, not concurrent use.
+
 ## Tests
 
 ```sh
