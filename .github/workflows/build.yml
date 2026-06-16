@@ -35,8 +35,6 @@ jobs:
             target: windows-x64
           - os: macos-latest # Apple Silicon (arm64)
             target: macos-arm64
-          - os: macos-13 # Intel (x86_64)
-            target: macos-x64
           - os: ubuntu-latest
             target: linux-x64
 
