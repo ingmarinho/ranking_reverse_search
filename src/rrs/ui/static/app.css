@@ -353,7 +353,7 @@ body::before {
 /* The interactive_image SVG layer is unused for cropping now. */
 .rrs-scrub-preview svg { pointer-events: none; }
 /* Client-side crop overlay (move + corner-resize). */
-.rrs-crop-overlay {
+.rrs-crop-layer {
   position: absolute; inset: 0; z-index: 2;
   cursor: crosshair; touch-action: none;
 }

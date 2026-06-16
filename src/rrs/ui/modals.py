@@ -244,7 +244,7 @@ async def open_frame_picker(
             initial = f"{file_url(out_path, data_dir)}" if out_path.exists() else ""
             with ui.element("div").classes("rrs-crop-wrap"):
                 img = ui.interactive_image(initial, cross=False).classes("rrs-scrub-preview")
-                with ui.element("div").classes("rrs-crop-overlay") as overlay:
+                with ui.element("div").classes("rrs-crop-layer") as overlay:
                     with ui.element("div").classes("rrs-crop-box"):
                         for h in ("nw", "ne", "sw", "se"):
                             ui.element("div").classes("rrs-crop-handle").props(f"data-handle={h}")
