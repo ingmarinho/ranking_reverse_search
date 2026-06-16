@@ -57,8 +57,23 @@ jobs:
 
       # Static ffmpeg + ffprobe on PATH, so the bundled copies run on machines
       # without a system ffmpeg (a dynamically-linked one would not).
+      # setup-ffmpeg has no macOS arm64 build, so that target fetches a static
+      # arm64 ffmpeg/ffprobe directly (verified: Mach-O arm64, runs standalone).
       - name: Install static ffmpeg + ffprobe
+        if: matrix.target != 'macos-arm64'
         uses: federicocarboni/setup-ffmpeg@v3
+
+      - name: Install static ffmpeg + ffprobe (macOS arm64)
+        if: matrix.target == 'macos-arm64'
+        run: |
+          mkdir -p "$HOME/ffmpeg-bin"
+          base="https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release"
+          curl -fL -o ffmpeg.zip "$base/ffmpeg.zip"
+          curl -fL -o ffprobe.zip "$base/ffprobe.zip"
+          unzip -oq ffmpeg.zip -d "$HOME/ffmpeg-bin"
+          unzip -oq ffprobe.zip -d "$HOME/ffmpeg-bin"
+          chmod +x "$HOME/ffmpeg-bin/ffmpeg" "$HOME/ffmpeg-bin/ffprobe"
+          echo "$HOME/ffmpeg-bin" >> "$GITHUB_PATH"
 
       - name: Install Python dependencies
         run: python -m pip install -e ".[dev]" pyinstaller
