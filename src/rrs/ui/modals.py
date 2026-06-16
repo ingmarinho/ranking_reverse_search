@@ -20,6 +20,30 @@ from rrs.ui.components import file_url, html_button
 _MIN_CROP = 0.01
 
 
+def crop_from_payload(payload: object) -> CropRect | None:
+    """Validate a client pointer-up crop payload into a clamped CropRect.
+
+    Returns None for a missing/empty payload, non-numeric fields, or a box
+    smaller than `_MIN_CROP` in either dimension (a stray click). The rect is
+    clamped to stay fully inside the [0,1] frame."""
+    if not isinstance(payload, dict):
+        return None
+    try:
+        x = float(payload["x"])
+        y = float(payload["y"])
+        w = float(payload["w"])
+        h = float(payload["h"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    x = min(max(x, 0.0), 1.0)
+    y = min(max(y, 0.0), 1.0)
+    w = min(max(w, 0.0), 1.0 - x)
+    h = min(max(h, 0.0), 1.0 - y)
+    if w <= _MIN_CROP or h <= _MIN_CROP:
+        return None
+    return CropRect(x, y, w, h)
+
+
 async def open_frame_picker(
     db: Database,
     data_dir: Path,
