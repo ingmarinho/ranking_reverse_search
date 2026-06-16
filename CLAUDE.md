@@ -66,6 +66,38 @@ Layered, single-process:
   `a7b4184`).
 - `pages.py` occasionally reaches into `db._conn` directly for ad-hoc queries.
 
+## Packaging & distribution
+
+Three ways to get rrs to people, lightest first (full docs in README):
+
+- **Tunnel (`scripts/rrs-share`)** — run locally + expose via `cloudflared` so
+  testers get a URL, no install. Downloads keep working (your residential IP; a
+  cloud host gets blocked by YouTube). Single shared workspace — one tester at a
+  time (the "active job" is just the newest job in the one DB).
+- **Desktop bundle (`scripts/pack.py`; Unix wrapper `scripts/rrs-pack`)** —
+  cross-platform PyInstaller `--onedir` build. PyInstaller can't cross-compile,
+  so build on the target OS. Bundles `schema.sql`, `ui/static`, and the
+  ffmpeg/ffprobe/deno binaries on PATH into `_internal/bin/`. ~220–360 MB (deno
+  alone is ~138 MB).
+- **CI release (`.github/workflows/build.yml`)** — tag `v*` → builds
+  windows-x64 / macos-arm64 / linux-x64 on native runners and attaches zips to a
+  GitHub Release; `workflow_dispatch` → run artifacts only (requires the workflow
+  on the default branch). Each job installs Deno + a static ffmpeg (macos-arm64
+  from ffmpeg.martin-riedl.de; `setup-ffmpeg` has no arm64), then runs `pack.py`.
+
+**Frozen-app rules — don't regress these; they only bite in a bundle, never in
+`python -m rrs.main`:**
+- `main.py` calls `multiprocessing.freeze_support()` before `main()`, else the
+  frozen binary fork-bombs on startup (each spawned worker re-runs `main()`).
+- Resolve bundled resources via `importlib.resources`, not `__file__`-relative
+  paths (`main.py::_static_dir`); the entry script is relocated when frozen.
+- `config._activate_bundled_binaries()` prepends `_MEIPASS/bin` to PATH so the
+  frozen app finds bundled ffmpeg/ffprobe/deno.
+
+Caveats: bundles are unsigned (Gatekeeper/SmartScreen warn); a dynamically-linked
+system ffmpeg won't run elsewhere (use a static build); `DATA_DIR` is launch-CWD-
+relative.
+
 ## Testing
 
 - `tests/conftest.py` provides `synthetic_video` (an ffmpeg-built 3-scene clip,
