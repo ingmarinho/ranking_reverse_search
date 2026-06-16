@@ -29,6 +29,16 @@ def test_out_of_range_is_clamped():
     # w/h clamped so the box stays inside the frame.
     assert abs(r.x + r.w - 1.0) < 1e-9
     assert abs(r.y + r.h - 1.0) < 1e-9
+    assert r.w > 0.01
+    assert r.h > 0.01
+
+
+def test_exact_min_size_is_rejected():
+    assert crop_from_payload({"x": 0.1, "y": 0.1, "w": 0.01, "h": 0.5}) is None
+
+
+def test_sub_min_height_returns_none():
+    assert crop_from_payload({"x": 0.1, "y": 0.1, "w": 0.5, "h": 0.005}) is None
 
 
 def test_non_numeric_returns_none():
