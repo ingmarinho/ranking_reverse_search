@@ -11,7 +11,7 @@ GROUP A — Frame-picker & cropping UX  [IN PROGRESS: being designed]
       center it maybe?
 
 ==============================================================================
-GROUP B — Download management
+GROUP B — Download management  [DONE]
 ==============================================================================
 - F3: figure out a convenient path to store downloaded files
 - F6: add an extra clip downloader at the bottom which can be used to download
