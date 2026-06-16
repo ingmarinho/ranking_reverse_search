@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
 import shutil
 from collections.abc import Callable
 from pathlib import Path
 
 from nicegui import ui
-from nicegui.events import KeyEventArguments
+from nicegui.events import GenericEventArguments, KeyEventArguments
 
 from rrs.pipeline.frames import FrameExtractError, extract_frame
 from rrs.pipeline.jobs import job_paths
@@ -203,7 +204,7 @@ async def open_frame_picker(
     def _step(delta: int) -> None:
         _scrub(state["fn"] + delta)
 
-    def _on_crop_event(e) -> None:
+    def _on_crop_event(e: GenericEventArguments) -> None:
         detail = e.args
         if isinstance(detail, dict) and "detail" in detail:
             detail = detail["detail"]
@@ -275,13 +276,7 @@ async def open_frame_picker(
 
     dialog.open()
     ui.run_javascript(_CROP_JS)
-    initial_crop = (
-        "null"
-        if state["crop"] is None
-        else (
-            f'{{"x":{state["crop"].x},"y":{state["crop"].y},'
-            f'"w":{state["crop"].w},"h":{state["crop"].h}}}'
-        )
-    )
+    c = state["crop"]
+    initial_crop = "null" if c is None else json.dumps({"x": c.x, "y": c.y, "w": c.w, "h": c.h})
     ui.run_javascript(f"window.rrsCrop.init({overlay.id}, {initial_crop})")
     await _show(state["fn"])
