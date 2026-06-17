@@ -21,7 +21,7 @@ async def test_run_pre_interactive_pipeline_happy_path(db, tmp_path, synthetic_v
     job_id = db.create_job(url="x")
     statuses: list[JobStatus] = []
 
-    def fake_download(url, out_path, max_height, progress_hook=None):
+    def fake_download(url, out_path, max_height, progress_hook=None, max_duration_sec=None):
         import shutil
 
         out_path.parent.mkdir(parents=True, exist_ok=True)

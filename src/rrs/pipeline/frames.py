@@ -7,6 +7,8 @@ from pathlib import Path
 
 import cv2
 
+from rrs.constants import DEFAULT_ASPECT_RATIO, JPEG_QUALITY, VIDEO_DIMENSIONS_CACHE_SIZE
+
 
 class FrameExtractError(RuntimeError):
     pass
@@ -26,7 +28,7 @@ def _atomic_imwrite(out_path: Path, img) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # Encode by format, not by filename — the temp file's extension is ".tmp", so
     # cv2.imwrite couldn't infer the JPEG codec from it.
-    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 88])
+    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
     if not ok:
         raise FrameExtractError(f"failed to encode {out_path}")
     fd, tmp = tempfile.mkstemp(dir=out_path.parent, prefix=f"{out_path.stem}-", suffix=".tmp")
@@ -42,9 +44,9 @@ def _atomic_imwrite(out_path: Path, img) -> None:
         raise
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=VIDEO_DIMENSIONS_CACHE_SIZE)
 def get_video_dimensions(video_path: Path) -> tuple[int, int]:
-    """Return (width, height) of the video. Falls back to (16, 9) if probe fails.
+    """Return (width, height) of the video. Falls back to DEFAULT_ASPECT_RATIO if probe fails.
 
     Memoized by path: each source video is probed at most once per process.
     Cache is fine because source files under data/jobs/<id>/ are written once
@@ -56,7 +58,7 @@ def get_video_dimensions(video_path: Path) -> tuple[int, int]:
     finally:
         cap.release()
     if w <= 0 or h <= 0:
-        return (16, 9)
+        return DEFAULT_ASPECT_RATIO
     return (w, h)
 
 

@@ -5,6 +5,8 @@ from pathlib import Path
 
 from scenedetect import ContentDetector, SceneManager, open_video
 
+from rrs.constants import SCENE_THRESHOLD_DEFAULT
+
 
 @dataclass(frozen=True)
 class SceneRow:
@@ -27,7 +29,7 @@ def last_selectable_frame(start_frame: int, end_frame: int) -> int:
     return max(start_frame, end_frame - 1)
 
 
-def detect_scenes(video_path: Path, threshold: float = 27.0) -> list[SceneRow]:
+def detect_scenes(video_path: Path, threshold: float = SCENE_THRESHOLD_DEFAULT) -> list[SceneRow]:
     video = open_video(str(video_path))
     sm = SceneManager()
     sm.add_detector(ContentDetector(threshold=threshold))

@@ -7,6 +7,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from rrs.constants import (
+    MAX_CLIP_DURATION_SEC_DEFAULT,
+    PORT_DEFAULT,
+    SCENE_THRESHOLD_DEFAULT,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,6 +47,7 @@ class Config:
     data_dir: Path
     port: int
     scene_threshold: float
+    max_clip_duration_sec: float | None
     imgbb_api_key: str | None
     has_deno: bool
 
@@ -67,10 +74,19 @@ def load_config(probe_ffmpeg: bool = True) -> Config:
             "Install Deno (https://deno.com/) for full support."
         )
 
+    # Cap on the initial clip length: rrs is built for shorts, not full-length
+    # videos to split. A value <= 0 disables the limit.
+    max_clip_duration_sec = float(
+        os.environ.get("MAX_CLIP_DURATION_SEC", str(MAX_CLIP_DURATION_SEC_DEFAULT))
+    )
+    if max_clip_duration_sec <= 0:
+        max_clip_duration_sec = None
+
     return Config(
         data_dir=data_dir,
-        port=int(os.environ.get("PORT", "8080")),
-        scene_threshold=float(os.environ.get("SCENE_THRESHOLD", "27.0")),
+        port=int(os.environ.get("PORT", str(PORT_DEFAULT))),
+        scene_threshold=float(os.environ.get("SCENE_THRESHOLD", str(SCENE_THRESHOLD_DEFAULT))),
+        max_clip_duration_sec=max_clip_duration_sec,
         imgbb_api_key=os.environ.get("IMGBB_API_KEY") or None,
         has_deno=has_deno,
     )

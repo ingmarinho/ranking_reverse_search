@@ -142,6 +142,7 @@ def _cfg(env_key):
         data_dir=Path("."),
         port=8080,
         scene_threshold=27.0,
+        max_clip_duration_sec=180.0,
         imgbb_api_key=env_key,
         has_deno=False,
     )

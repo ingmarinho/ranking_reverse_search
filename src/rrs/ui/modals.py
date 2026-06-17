@@ -11,22 +11,19 @@ from pathlib import Path
 from nicegui import ui
 from nicegui.events import GenericEventArguments, KeyEventArguments
 
+from rrs.constants import MIN_CROP_FRACTION, SCRUB_THROTTLE_SEC
 from rrs.pipeline.frames import FrameExtractError, extract_frame
 from rrs.pipeline.jobs import job_paths
 from rrs.pipeline.scenes import last_selectable_frame
 from rrs.store.db import CropRect, Database, Scene
 from rrs.ui.components import file_url, html_button
 
-# A drag smaller than this fraction of the frame is treated as a stray click, not
-# a crop — so a single click never wipes an existing crop.
-_MIN_CROP = 0.01
-
 
 def crop_from_payload(payload: object) -> CropRect | None:
     """Validate a client pointer-up crop payload into a clamped CropRect.
 
     Returns None for a missing/empty payload, non-numeric fields, or a box
-    smaller than `_MIN_CROP` in either dimension (a stray click). The rect is
+    smaller than `MIN_CROP_FRACTION` in either dimension (a stray click). The rect is
     clamped to stay fully inside the [0,1] frame."""
     if not isinstance(payload, dict):
         return None
@@ -41,7 +38,7 @@ def crop_from_payload(payload: object) -> CropRect | None:
     y = min(max(y, 0.0), 1.0)
     w = min(max(w, 0.0), 1.0 - x)
     h = min(max(h, 0.0), 1.0 - y)
-    if w <= _MIN_CROP or h <= _MIN_CROP:
+    if w <= MIN_CROP_FRACTION or h <= MIN_CROP_FRACTION:
         return None
     return CropRect(x, y, w, h)
 
@@ -260,7 +257,9 @@ async def open_frame_picker(
                 slider = ui.slider(min=start, max=end, step=1, value=state["fn"]).classes(
                     "rrs-scrub-slider"
                 )
-                slider.on("update:model-value", lambda e: _scrub(e.args), throttle=0.15)
+                slider.on(
+                    "update:model-value", lambda e: _scrub(e.args), throttle=SCRUB_THROTTLE_SEC
+                )
                 # The throttled live event can drop the final drag-release value
                 # (why clicking the track "fixes" it); `change` fires on release
                 # un-throttled, guaranteeing the landed frame always renders.
@@ -279,7 +278,9 @@ async def open_frame_picker(
     c = state["crop"]
     initial_crop = "null" if c is None else json.dumps(asdict(c))
     # Send the module (idempotent) and init in one round-trip so the guard and
-    # init always run in the same microtask. _MIN_CROP is the single source of
+    # init always run in the same microtask. MIN_CROP_FRACTION is the single source of
     # truth for the stray-click threshold, passed through to the overlay.
-    ui.run_javascript(f"{_CROP_JS}\nwindow.rrsCrop.init({overlay.id}, {initial_crop}, {_MIN_CROP})")
+    ui.run_javascript(
+        f"{_CROP_JS}\nwindow.rrsCrop.init({overlay.id}, {initial_crop}, {MIN_CROP_FRACTION})"
+    )
     await _show(state["fn"])

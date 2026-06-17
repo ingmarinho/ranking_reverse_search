@@ -6,6 +6,14 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from rrs.constants import (
+    IMGBB_ERROR_SNIPPET_LEN,
+    IMGBB_FRAME_EXPIRATION_SEC,
+    IMGBB_PROBE_EXPIRATION_SEC,
+    IMGBB_UPLOAD_TIMEOUT_SEC,
+    IMGBB_VALIDATE_TIMEOUT_SEC,
+)
+
 if TYPE_CHECKING:
     from rrs.config import Config
     from rrs.store.db import Database
@@ -41,41 +49,41 @@ def _imgbb_upload(
         raise ImgbbError(f"imgbb request failed: {exc}") from exc
 
     if resp.status_code >= 400:
-        raise ImgbbError(f"imgbb {resp.status_code}: {resp.text[:200]}")
+        raise ImgbbError(f"imgbb {resp.status_code}: {resp.text[:IMGBB_ERROR_SNIPPET_LEN]}")
 
     try:
         return resp.json()["data"]
     except (KeyError, ValueError) as exc:
-        raise ImgbbError(f"imgbb malformed response: {resp.text[:200]}") from exc
+        raise ImgbbError(
+            f"imgbb malformed response: {resp.text[:IMGBB_ERROR_SNIPPET_LEN]}"
+        ) from exc
 
 
-# Hosted frames are only needed for the duration of a reverse-search session;
-# expire them after a week so they don't linger on imgbb indefinitely.
-_FRAME_EXPIRATION_SECONDS = 7 * 24 * 60 * 60
-
-
-def upload_image(path: Path, api_key: str, timeout: float = 30.0) -> str:
+def upload_image(path: Path, api_key: str, timeout: float = IMGBB_UPLOAD_TIMEOUT_SEC) -> str:
     encoded = base64.b64encode(Path(path).read_bytes()).decode("ascii")
-    data = _imgbb_upload(encoded, api_key, timeout, {"expiration": _FRAME_EXPIRATION_SECONDS})
+    data = _imgbb_upload(encoded, api_key, timeout, {"expiration": IMGBB_FRAME_EXPIRATION_SEC})
     try:
         return data["url"]
     except (KeyError, TypeError) as exc:
         raise ImgbbError(f"imgbb malformed response: missing url ({data!r:.200})") from exc
 
 
-def validate_imgbb_key(api_key: str, timeout: float = 15.0) -> None:
+def validate_imgbb_key(api_key: str, timeout: float = IMGBB_VALIDATE_TIMEOUT_SEC) -> None:
     """Validate an imgbb key by uploading a self-expiring 1x1 probe image.
 
     Raises ImgbbError if imgbb rejects the key (or the request fails). On success
-    the probe is deleted best-effort; expiration=60 guarantees cleanup regardless.
+    the probe is deleted best-effort; the short expiration guarantees cleanup
+    regardless.
     """
-    data = _imgbb_upload(_TEST_PNG_B64, api_key, timeout, {"expiration": 60})
+    data = _imgbb_upload(
+        _TEST_PNG_B64, api_key, timeout, {"expiration": IMGBB_PROBE_EXPIRATION_SEC}
+    )
     delete_url = data.get("delete_url") if isinstance(data, dict) else None
     if delete_url:
         try:
             httpx.get(delete_url, timeout=timeout)
         except httpx.HTTPError:
-            pass  # best-effort; expiration=60 is the guaranteed cleanup
+            pass  # best-effort; the short probe expiration is the guaranteed cleanup
 
 
 def effective_imgbb_key(db: Database, cfg: Config) -> str | None:

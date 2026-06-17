@@ -10,6 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import match_filter_func
+
+from rrs.constants import REENCODE_AUDIO_BITRATE, REENCODE_X264_CRF, REENCODE_X264_PRESET
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,17 @@ ProgressHook = Callable[[float], None]
 # at all — in QuickTime. ffprobe reports avc1 as "h264".
 _COMPATIBLE_VCODECS = {"h264"}
 _COMPATIBLE_ACODECS = {"aac"}
+
+
+def _format_duration(seconds: float) -> str:
+    """Human-readable duration for error messages, e.g. 180 → '3 min'."""
+    total = int(round(seconds))
+    minutes, secs = divmod(total, 60)
+    if minutes and secs:
+        return f"{minutes} min {secs} sec"
+    if minutes:
+        return f"{minutes} min"
+    return f"{secs} sec"
 
 
 def _format_string(max_height: int | None) -> str:
@@ -112,8 +126,17 @@ def _ensure_playable(path: Path) -> None:
     else:
         # pix_fmt yuv420p forces 8-bit so a 10-bit VP9/AV1 source doesn't become
         # H.264 High 10, which QuickTime also refuses to play.
-        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]
-    cmd += ["-c:a", "copy"] if audio_ok else ["-c:a", "aac", "-b:a", "192k"]
+        cmd += [
+            "-c:v",
+            "libx264",
+            "-preset",
+            REENCODE_X264_PRESET,
+            "-crf",
+            REENCODE_X264_CRF,
+            "-pix_fmt",
+            "yuv420p",
+        ]
+    cmd += ["-c:a", "copy"] if audio_ok else ["-c:a", "aac", "-b:a", REENCODE_AUDIO_BITRATE]
     cmd += ["-movflags", "+faststart", str(tmp)]
 
     try:
@@ -132,8 +155,13 @@ def download_video(
     out_path: Path,
     max_height: int | None,
     progress_hook: ProgressHook | None = None,
+    max_duration_sec: float | None = None,
 ) -> DownloadResult:
-    """Download a video via yt-dlp library."""
+    """Download a video via yt-dlp library.
+
+    When `max_duration_sec` is set, the clip's metadata is fetched first and the
+    download is refused (raising `DownloadError`) if it runs longer than the
+    limit — so an over-length video is rejected before any bytes are pulled."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -162,11 +190,27 @@ def download_video(
         "remote_components": ["ejs:github"],
     }
 
+    if max_duration_sec is not None:
+        # Reject over-length clips before any media bytes are pulled — yt-dlp
+        # evaluates this once, after resolving metadata but before downloading,
+        # so it shares the single extraction pass (no second nsig/JS solve).
+        opts["match_filter"] = match_filter_func(f"duration <=? {max_duration_sec}")
+
     try:
         with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
     except Exception as exc:
         raise DownloadError(f"yt-dlp failed: {exc}") from exc
+
+    # On rejection yt-dlp skips the download but still returns the metadata; turn
+    # that into a clear, user-facing failure instead of the generic "missing file".
+    duration = float((info or {}).get("duration") or 0.0)
+    if max_duration_sec is not None and duration > max_duration_sec:
+        raise DownloadError(
+            f"Clip is {_format_duration(duration)} long, over the "
+            f"{_format_duration(max_duration_sec)} limit — rrs is built "
+            f"for short clips, not full-length videos."
+        )
 
     if not out_path.exists():
         raise DownloadError(f"yt-dlp finished but {out_path} is missing")

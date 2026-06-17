@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from rrs.constants import DOWNLOAD_MAX_HEIGHT, MAX_DOWNLOAD_DIRNAME_LEN
 from rrs.pipeline.download import download_video
 from rrs.pipeline.frames import extract_frame
 from rrs.pipeline.scenes import detect_scenes
@@ -37,7 +38,7 @@ def safe_dirname(title: str | None, job_id: int) -> str:
     """Filesystem-safe folder name from a video title; falls back to job-<id>."""
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", title or "").strip()
     cleaned = re.sub(r"\s+", " ", cleaned).rstrip(". ")
-    return cleaned[:120] if cleaned else f"job-{job_id}"
+    return cleaned[:MAX_DOWNLOAD_DIRNAME_LEN] if cleaned else f"job-{job_id}"
 
 
 def resolve_download_dir(db: Database, data_dir: Path, job: Job) -> Path:
@@ -87,6 +88,7 @@ async def run_pre_interactive_pipeline(
     job_id: int,
     data_dir: Path,
     scene_threshold: float,
+    max_clip_duration_sec: float | None = None,
     on_status: StatusHook | None = None,
     on_download_progress: ProgressHook | None = None,
 ) -> None:
@@ -101,7 +103,12 @@ async def run_pre_interactive_pipeline(
     try:
         _set_status(db, job_id, JobStatus.DOWNLOADING, on_status)
         result = await asyncio.to_thread(
-            download_video, job.url, paths.source, 1080, on_download_progress
+            download_video,
+            job.url,
+            paths.source,
+            DOWNLOAD_MAX_HEIGHT,
+            on_download_progress,
+            max_clip_duration_sec,
         )
         db.set_job_source(
             job_id,

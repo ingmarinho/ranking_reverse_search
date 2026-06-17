@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 
 from rrs.pipeline.download import (
+    DownloadError,
     DownloadResult,
     _ensure_playable,
+    _format_duration,
     _probe_codecs,
     download_video,
 )
@@ -176,3 +178,62 @@ def test_probe_codecs_returns_none_for_garbage(tmp_path):
     path = tmp_path / "junk.mp4"
     path.write_bytes(b"\x00\x01\x02not a video")
     assert _probe_codecs(path) == (None, None)
+
+
+def _fake_ydl_with_duration(monkeypatch, duration: float) -> dict:
+    """Patch YoutubeDL with a mock whose metadata reports `duration` seconds.
+
+    Honours the real `match_filter` from opts (the way yt-dlp does): a rejected
+    clip yields metadata but no downloaded file, so a single extract_info pass
+    covers both the limit check and the download. Records the extraction count."""
+    calls = {"extractions": 0}
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self._filename = opts["outtmpl"].format(id="abc")
+            self._match_filter = opts.get("match_filter")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def extract_info(self, url, download):
+            calls["extractions"] += 1
+            info = {"title": "Long Vid", "duration": duration, "_filename": self._filename}
+            rejected = (
+                download and self._match_filter and self._match_filter(info, incomplete=False)
+            )
+            if download and not rejected:
+                Path(self._filename).parent.mkdir(parents=True, exist_ok=True)
+                Path(self._filename).write_bytes(b"\x00")
+            return info
+
+    monkeypatch.setattr("rrs.pipeline.download.YoutubeDL", FakeYDL)
+    return calls
+
+
+def test_download_video_rejects_clip_over_duration_limit(monkeypatch, tmp_path):
+    calls = _fake_ydl_with_duration(monkeypatch, duration=600.0)
+    out = tmp_path / "source.mp4"
+    with pytest.raises(DownloadError, match="over the 3 min limit"):
+        download_video(url="x", out_path=out, max_height=None, max_duration_sec=180)
+    # A single extraction pass rejects the clip before any bytes are written.
+    assert calls["extractions"] == 1
+    assert not out.exists()
+
+
+def test_download_video_allows_clip_within_duration_limit(monkeypatch, tmp_path):
+    calls = _fake_ydl_with_duration(monkeypatch, duration=120.0)
+    out = tmp_path / "source.mp4"
+    result = download_video(url="x", out_path=out, max_height=None, max_duration_sec=180)
+    assert result.duration_sec == 120.0
+    assert calls["extractions"] == 1
+    assert out.exists()
+
+
+def test_format_duration_renders_minutes_and_seconds():
+    assert _format_duration(180) == "3 min"
+    assert _format_duration(75) == "1 min 15 sec"
+    assert _format_duration(42) == "42 sec"

@@ -18,7 +18,7 @@ def test_valid_payload_returns_croprect():
 
 
 def test_sub_min_size_returns_none():
-    # w below _MIN_CROP (0.01) is a stray click, not a crop.
+    # w below MIN_CROP_FRACTION (0.01) is a stray click, not a crop.
     assert crop_from_payload({"x": 0.1, "y": 0.1, "w": 0.005, "h": 0.5}) is None
 
 

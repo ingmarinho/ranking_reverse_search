@@ -12,6 +12,7 @@ from pathlib import Path
 from nicegui import ui
 
 from rrs.config import Config
+from rrs.constants import DEFAULT_ASPECT_RATIO, PROGRESS_POLL_INTERVAL_SEC
 from rrs.pipeline.download import download_video
 from rrs.pipeline.engines import get_engine
 from rrs.pipeline.frames import crop_image, get_video_dimensions
@@ -42,7 +43,7 @@ def register_pages(get_db: GetDb, get_cfg: GetCfg) -> None:
         # slot (not the refreshable's), so a refresh never deletes it — avoids
         # the self-deleting-timer race that crashed `once=True` timers created
         # inside `_render_wizard`.
-        ui.timer(1.0, lambda: _poll_progress(db, get_cfg()))
+        ui.timer(PROGRESS_POLL_INTERVAL_SEC, lambda: _poll_progress(db, get_cfg()))
 
 
 def _find_active_job(db: Database) -> Job | None:
@@ -141,6 +142,7 @@ async def _run_pipeline(db: Database, cfg: Config, job_id: int) -> None:
             job_id=job_id,
             data_dir=cfg.data_dir,
             scene_threshold=cfg.scene_threshold,
+            max_clip_duration_sec=cfg.max_clip_duration_sec,
         )
     except Exception:
         pass
@@ -189,7 +191,9 @@ def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
             "limited. Install Deno (https://deno.com/) for full support.</div>"
         )
 
-    aspect = get_video_dimensions(Path(job.source_path)) if job.source_path else (16, 9)
+    aspect = (
+        get_video_dimensions(Path(job.source_path)) if job.source_path else DEFAULT_ASPECT_RATIO
+    )
     scenes = db.list_scenes(job.id)
     enabled_ids = json.loads(db.get_setting("enabled_engines") or "[]")
     for scene in scenes:

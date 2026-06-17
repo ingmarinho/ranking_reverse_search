@@ -17,7 +17,9 @@ challenges. Missing it is non-fatal (soft warning + UI banner), but format
 availability degrades. Install via `brew install deno` or https://deno.com/.
 
 Required/optional env vars: `IMGBB_API_KEY` (needed to host frames for search),
-`DATA_DIR` (default `./data`), `PORT` (default 8080), `SCENE_THRESHOLD` (default 27.0).
+`DATA_DIR` (default `./data`), `PORT` (default 8080), `SCENE_THRESHOLD` (default 27.0),
+`MAX_CLIP_DURATION_SEC` (default 180 — initial clips longer than this are refused
+before download; `0` disables the cap. rrs targets shorts, not full videos).
 
 ## Architecture
 
