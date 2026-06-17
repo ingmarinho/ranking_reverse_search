@@ -20,6 +20,23 @@ pip install -r requirements.txt
 IBM Plex Mono woff2 files are bundled under `src/rrs/ui/static/fonts/`
 (OFL-1.1 licensed).
 
+### Linux / WSL2 (Debian/Ubuntu)
+
+Windows users can run rrs inside [WSL2](https://learn.microsoft.com/windows/wsl/install)
+— install it, then follow the steps below in the Linux shell. `localhost:8080`
+is shared with Windows, so you open the app in your normal Windows browser.
+
+Grab the system dependencies (`ffmpeg` includes `ffprobe`), then Deno:
+
+```sh
+sudo apt update
+sudo apt install -y ffmpeg python3-venv python3-pip
+curl -fsSL https://deno.land/install.sh | sh   # then restart the shell so deno is on PATH
+```
+
+Then create the venv and install rrs as shown above (`python3 -m venv .venv`,
+`source .venv/bin/activate`, `pip install -e ".[dev]"`).
+
 ## Run
 
 ```sh
@@ -52,6 +69,13 @@ imgbb automatically (after a week).
 
 Downloads land in the active job's folder. A "Download an extra clip" box at the
 bottom of the page lets you pull in any additional video by URL.
+
+Because downloads go through [yt-dlp](https://github.com/yt-dlp/yt-dlp), the URL
+doesn't have to be YouTube: yt-dlp supports
+[well over a thousand sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
+(Vimeo, TikTok, Twitter/X, Reddit, Twitch, news sites, and many more), plus
+direct links to bare video files — so rrs can pull a clip from almost anywhere on
+the internet.
 
 ## Building a desktop bundle
 
