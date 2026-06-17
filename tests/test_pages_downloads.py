@@ -6,7 +6,7 @@ import pytest
 
 from rrs.pipeline.download import DownloadResult
 from rrs.store.db import JobStatus
-from rrs.ui.pages import download_extra_clip
+from rrs.ui.pages import _open_downloads_folder, download_extra_clip
 
 
 @pytest.mark.asyncio
@@ -35,3 +35,20 @@ async def test_download_extra_clip_numbers_into_job_folder(db, tmp_path):
 async def test_download_extra_clip_raises_without_active_job(db, tmp_path):
     with pytest.raises(RuntimeError):
         await download_extra_clip(db, tmp_path, "https://clip/1")
+
+
+def test_open_downloads_folder_reuses_same_folder_on_repeat(db, tmp_path):
+    # Regression: clicking "Open folder" repeatedly used to create a new
+    # "<title> (2)", "(3)", … each time because the handler trusted a stale Job
+    # object whose download_dir was None even after the first click persisted it.
+    job_id = db.create_job(url="ranking")
+    db.set_job_source(job_id, title="My Video", duration_sec=1.0, source_path="/s.mp4")
+    db.update_job_status(job_id, JobStatus.INTERACTIVE)
+
+    with patch("rrs.ui.pages.subprocess.run"), patch("rrs.ui.pages.os.startfile", create=True):
+        for _ in range(3):
+            _open_downloads_folder(db, tmp_path)
+
+    downloads = tmp_path / "downloads"
+    assert [p.name for p in downloads.iterdir()] == ["My Video"]
+    assert db.get_job(job_id).download_dir == str(downloads / "My Video")

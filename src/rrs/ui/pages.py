@@ -206,12 +206,12 @@ def _render_scene_list(db: Database, cfg: Config, job: Job) -> None:
             on_open_frame_picker=lambda s: _open_frame_picker(db, cfg, s),
             on_search_click=lambda s, eid: _do_reverse_search(db, cfg, s, eid),
             on_download=lambda sid, url: download_source_for_scene(db, cfg.data_dir, sid, url),
-            on_open_folder=lambda: _open_downloads_folder(db, cfg.data_dir, job),
+            on_open_folder=lambda: _open_downloads_folder(db, cfg.data_dir),
             enabled_ids=enabled_ids,
         )
     render_extra_downloader(
         on_download=lambda url: download_extra_clip(db, cfg.data_dir, url),
-        on_open_folder=lambda: _open_downloads_folder(db, cfg.data_dir, job),
+        on_open_folder=lambda: _open_downloads_folder(db, cfg.data_dir),
     )
 
 
@@ -307,8 +307,15 @@ async def download_extra_clip(db: Database, data_dir: Path, url: str) -> str:
     return Path(result.path).name
 
 
-def _open_downloads_folder(db: Database, data_dir: Path, job: Job) -> None:
-    """Reveal the job's downloads folder in the OS file manager (local app)."""
+def _open_downloads_folder(db: Database, data_dir: Path) -> None:
+    """Reveal the active job's downloads folder in the OS file manager (local app).
+
+    Re-fetches the job from the DB rather than trusting a captured `Job` (which
+    goes stale once `resolve_download_dir` persists `download_dir`); a stale job
+    would otherwise recompute a fresh `<title> (2)`, `(3)`, … on every click."""
+    job = _find_active_job(db)
+    if job is None:
+        return
     folder = resolve_download_dir(db, data_dir, job)
     folder.mkdir(parents=True, exist_ok=True)
     try:
