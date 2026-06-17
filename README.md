@@ -125,3 +125,7 @@ time, right-click it → Open → Open). Then open <http://localhost:8080>.
 ```sh
 pytest
 ```
+
+## License
+
+[MIT](LICENSE)

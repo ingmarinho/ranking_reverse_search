@@ -2,6 +2,8 @@
 name = "rrs"
 version = "0.1.0"
 description = "Ranking reverse search — local NiceGUI tool"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
   # yt-dlp >= 2025.11.12 requires an external JS runtime (Deno, recommended) for
@@ -24,7 +26,7 @@ dev = [
 rrs = "rrs.main:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
