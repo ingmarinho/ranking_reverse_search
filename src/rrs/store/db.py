@@ -98,46 +98,52 @@ class Database:
             self._conn.execute("ALTER TABLE jobs ADD COLUMN download_dir TEXT")
         self._conn.commit()
 
+    def _write(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
+        """Execute a single write statement, commit, and return the cursor."""
+        cur = self._conn.execute(sql, params)
+        self._conn.commit()
+        return cur
+
     # ---- jobs ----
 
     def create_job(self, url: str) -> int:
-        cur = self._conn.execute(
+        cur = self._write(
             "INSERT INTO jobs (url, status) VALUES (?, ?)",
             (url, JobStatus.DOWNLOADING.value),
         )
-        self._conn.commit()
         return cur.lastrowid
 
     def get_job(self, job_id: int) -> Job | None:
         row = self._conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
         return self._row_to_job(row) if row else None
 
+    def get_latest_job(self) -> Job | None:
+        """Return the most recent job by id, or None if there are none."""
+        row = self._conn.execute("SELECT * FROM jobs ORDER BY id DESC LIMIT 1").fetchone()
+        return self._row_to_job(row) if row else None
+
     def update_job_status(self, job_id: int, status: JobStatus) -> None:
-        self._conn.execute(
+        self._write(
             "UPDATE jobs SET status = ?, error = NULL WHERE id = ?",
             (status.value, job_id),
         )
-        self._conn.commit()
 
     def fail_job(self, job_id: int, error: str) -> None:
-        self._conn.execute(
+        self._write(
             "UPDATE jobs SET status = ?, error = ? WHERE id = ?",
             (JobStatus.FAILED.value, error, job_id),
         )
-        self._conn.commit()
 
     def set_job_source(
         self, job_id: int, title: str, duration_sec: float, source_path: str
     ) -> None:
-        self._conn.execute(
+        self._write(
             "UPDATE jobs SET title = ?, duration_sec = ?, source_path = ? WHERE id = ?",
             (title, duration_sec, source_path, job_id),
         )
-        self._conn.commit()
 
     def set_download_dir(self, job_id: int, path: str) -> None:
-        self._conn.execute("UPDATE jobs SET download_dir = ? WHERE id = ?", (path, job_id))
-        self._conn.commit()
+        self._write("UPDATE jobs SET download_dir = ? WHERE id = ?", (path, job_id))
 
     def claimed_download_dirs(self, exclude_job_id: int) -> set[str]:
         """All non-null download_dir values claimed by jobs other than the given one."""
@@ -148,8 +154,7 @@ class Database:
         return {r["download_dir"] for r in cur.fetchall()}
 
     def delete_job(self, job_id: int) -> None:
-        self._conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
-        self._conn.commit()
+        self._write("DELETE FROM jobs WHERE id = ?", (job_id,))
 
     # ---- scenes ----
 
@@ -180,12 +185,11 @@ class Database:
         path: str,
         is_selected: bool = False,
     ) -> int:
-        cur = self._conn.execute(
+        cur = self._write(
             "INSERT INTO frames (scene_id, ordinal, frame_number, path, is_selected)"
             " VALUES (?, ?, ?, ?, ?)",
             (scene_id, ordinal, frame_number, path, int(is_selected)),
         )
-        self._conn.commit()
         return cur.lastrowid
 
     def list_frames(self, scene_id: int) -> list[Frame]:
@@ -195,25 +199,20 @@ class Database:
         return [self._row_to_frame(r) for r in cur.fetchall()]
 
     def set_frame_imgbb_url(self, frame_id: int, url: str) -> None:
-        self._conn.execute("UPDATE frames SET imgbb_url = ? WHERE id = ?", (url, frame_id))
-        self._conn.commit()
+        self._write("UPDATE frames SET imgbb_url = ? WHERE id = ?", (url, frame_id))
 
     def set_frame_image(self, frame_id: int, frame_number: int, path: str) -> None:
         """Point a frame row at a different extracted frame.
 
         Clears imgbb_url: the image changed, so any cached imgbb upload is stale
         and must be re-uploaded on the next reverse search."""
-        self._conn.execute(
+        self._write(
             "UPDATE frames SET frame_number = ?, path = ?, imgbb_url = NULL WHERE id = ?",
             (frame_number, path, frame_id),
         )
-        self._conn.commit()
 
     def set_frame_selected(self, frame_id: int, selected: bool) -> None:
-        self._conn.execute(
-            "UPDATE frames SET is_selected = ? WHERE id = ?", (int(selected), frame_id)
-        )
-        self._conn.commit()
+        self._write("UPDATE frames SET is_selected = ? WHERE id = ?", (int(selected), frame_id))
 
     def set_frame_crop(self, frame_id: int, rect: CropRect | None) -> None:
         """Set (or clear) the frame's crop region.
@@ -221,18 +220,17 @@ class Database:
         Clears imgbb_url: the searched image changed, so any cached upload is
         stale and must be re-uploaded (cropped) on the next reverse search."""
         if rect is None:
-            self._conn.execute(
+            self._write(
                 "UPDATE frames SET crop_x = NULL, crop_y = NULL, crop_w = NULL,"
                 " crop_h = NULL, imgbb_url = NULL WHERE id = ?",
                 (frame_id,),
             )
         else:
-            self._conn.execute(
+            self._write(
                 "UPDATE frames SET crop_x = ?, crop_y = ?, crop_w = ?, crop_h = ?,"
                 " imgbb_url = NULL WHERE id = ?",
                 (rect.x, rect.y, rect.w, rect.h, frame_id),
             )
-        self._conn.commit()
 
     # ---- sources ----
 
@@ -241,16 +239,12 @@ class Database:
             "SELECT id FROM sources WHERE scene_id = ?", (scene_id,)
         ).fetchone()
         if existing:
-            self._conn.execute(
+            self._write(
                 "UPDATE sources SET url = ?, path = NULL WHERE id = ?",
                 (url, existing["id"]),
             )
-            self._conn.commit()
             return existing["id"]
-        cur = self._conn.execute(
-            "INSERT INTO sources (scene_id, url) VALUES (?, ?)", (scene_id, url)
-        )
-        self._conn.commit()
+        cur = self._write("INSERT INTO sources (scene_id, url) VALUES (?, ?)", (scene_id, url))
         return cur.lastrowid
 
     def get_source(self, scene_id: int) -> Source | None:
@@ -258,8 +252,7 @@ class Database:
         return self._row_to_source(row) if row else None
 
     def set_source_downloaded(self, source_id: int, path: str) -> None:
-        self._conn.execute("UPDATE sources SET path = ? WHERE id = ?", (path, source_id))
-        self._conn.commit()
+        self._write("UPDATE sources SET path = ? WHERE id = ?", (path, source_id))
 
     # ---- settings ----
 
@@ -268,12 +261,11 @@ class Database:
         return row["value"] if row else None
 
     def set_setting(self, key: str, value: str) -> None:
-        self._conn.execute(
+        self._write(
             "INSERT INTO settings (key, value) VALUES (?, ?)"
             " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value),
         )
-        self._conn.commit()
 
     def get_imgbb_key(self) -> str | None:
         value = (self.get_setting(SETTINGS_IMGBB_KEY) or "").strip()
@@ -283,8 +275,7 @@ class Database:
         self.set_setting(SETTINGS_IMGBB_KEY, key.strip())
 
     def clear_imgbb_key(self) -> None:
-        self._conn.execute("DELETE FROM settings WHERE key = ?", (SETTINGS_IMGBB_KEY,))
-        self._conn.commit()
+        self._write("DELETE FROM settings WHERE key = ?", (SETTINGS_IMGBB_KEY,))
 
     # ---- helpers ----
 

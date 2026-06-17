@@ -47,8 +47,7 @@ def register_pages(get_db: GetDb, get_cfg: GetCfg) -> None:
 
 def _find_active_job(db: Database) -> Job | None:
     """Return the most recent non-deleted job, or None."""
-    row = db._conn.execute("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").fetchone()
-    return db.get_job(row["id"]) if row else None
+    return db.get_latest_job()
 
 
 _TRANSIENT_STATUSES = (
@@ -156,11 +155,9 @@ def _render_for_status(db: Database, cfg: Config, job: Job) -> None:
         html_button("START OVER", lambda: _start_over(db, cfg.data_dir, job.id))
         return
     if status in _TRANSIENT_STATUSES:
-        if job.id in _INFLIGHT:
-            _render_progress(job)
-            # Progress refresh is driven by the page-scoped poller in `index()`.
-        else:
-            _render_progress(job)
+        # Progress refresh is driven by the page-scoped poller in `index()`.
+        _render_progress(job)
+        if job.id not in _INFLIGHT:
             ui.html(
                 '<div class="rrs-meta" style="margin-top:14px">'
                 "no worker running for this stage</div>"
