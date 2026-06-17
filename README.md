@@ -91,9 +91,10 @@ Silicon), and Linux x64** on GitHub's native runners (no cross-compile).
 - **Manual run** (Actions → "Build bundles" → Run workflow) → zips uploaded as run
   artifacts, no Release. Use this to smoke-test before tagging.
 
-Each job installs Deno and a static ffmpeg per OS (macOS arm64 pulls from
-ffmpeg.martin-riedl.de, since `setup-ffmpeg` has no arm64 build), then runs
-`scripts/pack.py`.
+Each job installs Deno and a static ffmpeg per OS, then runs `scripts/pack.py`.
+Windows uses `setup-ffmpeg`; macOS arm64 and Linux x64 pull portable builds
+directly from ffmpeg.martin-riedl.de (`setup-ffmpeg` has no arm64 build, and its
+Linux source goes down periodically).
 
 ## Tests
 

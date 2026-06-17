@@ -35,8 +35,10 @@ jobs:
             target: windows-x64
           - os: macos-latest # Apple Silicon (arm64)
             target: macos-arm64
+            ffmpeg_platform: macos/arm64
           - os: ubuntu-latest
             target: linux-x64
+            ffmpeg_platform: linux/amd64
 
     steps:
       - uses: actions/checkout@v4
@@ -55,17 +57,21 @@ jobs:
 
       # Static ffmpeg + ffprobe on PATH, so the bundled copies run on machines
       # without a system ffmpeg (a dynamically-linked one would not).
-      # setup-ffmpeg has no macOS arm64 build, so that target fetches a static
-      # arm64 ffmpeg/ffprobe directly (verified: Mach-O arm64, runs standalone).
-      - name: Install static ffmpeg + ffprobe
-        if: matrix.target != 'macos-arm64'
+      #
+      # Windows uses setup-ffmpeg (gyan.dev source, reliable). macOS arm64 and
+      # Linux x64 fetch portable builds straight from ffmpeg.martin-riedl.de:
+      # setup-ffmpeg has no macOS arm64 build, and its Linux path pulls from
+      # johnvansickle.com, which goes down periodically and broke this job.
+      # The martin-riedl builds are verified to run standalone on their targets.
+      - name: Install static ffmpeg + ffprobe (Windows)
+        if: matrix.target == 'windows-x64'
         uses: federicocarboni/setup-ffmpeg@v3
 
-      - name: Install static ffmpeg + ffprobe (macOS arm64)
-        if: matrix.target == 'macos-arm64'
+      - name: Install static ffmpeg + ffprobe (direct download)
+        if: matrix.ffmpeg_platform != ''
         run: |
           mkdir -p "$HOME/ffmpeg-bin"
-          base="https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release"
+          base="https://ffmpeg.martin-riedl.de/redirect/latest/${{ matrix.ffmpeg_platform }}/release"
           curl -fL -o ffmpeg.zip "$base/ffmpeg.zip"
           curl -fL -o ffprobe.zip "$base/ffprobe.zip"
           unzip -oq ffmpeg.zip -d "$HOME/ffmpeg-bin"

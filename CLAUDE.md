@@ -94,8 +94,10 @@ Two ways to get rrs to people (full docs in README):
 - **CI release (`.github/workflows/build.yml`)** — tag `v*` → builds
   windows-x64 / macos-arm64 / linux-x64 on native runners and attaches zips to a
   GitHub Release; `workflow_dispatch` → run artifacts only (requires the workflow
-  on the default branch). Each job installs Deno + a static ffmpeg (macos-arm64
-  from ffmpeg.martin-riedl.de; `setup-ffmpeg` has no arm64), then runs `pack.py`.
+  on the default branch). Each job installs Deno + a static ffmpeg, then runs
+  `pack.py`. Windows uses `setup-ffmpeg`; macos-arm64 and linux-x64 download
+  portable builds straight from ffmpeg.martin-riedl.de (`setup-ffmpeg` has no
+  arm64, and its Linux source — johnvansickle.com — periodically goes down).
 
 **Frozen-app rules — don't regress these; they only bite in a bundle, never in
 `python -m rrs.main`:**
