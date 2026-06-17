@@ -75,7 +75,9 @@ frozen app puts that dir on PATH at startup (`config._activate_bundled_binaries`
   distribution. CI already does this.
 - Bundles are unsigned, so macOS Gatekeeper / Windows SmartScreen warn on first
   launch. Sign + notarize before handing to non-technical users.
-- `DATA_DIR` defaults to `./data` relative to the launch directory.
+- `DATA_DIR` (when unset) defaults to a `data/` folder next to the binary in a
+  bundled build, and to `./data` relative to the launch directory in a source
+  run. Set `DATA_DIR` to override either.
 
 ## Releasing builds (CI)
 

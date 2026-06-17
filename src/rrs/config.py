@@ -26,6 +26,25 @@ class MissingDependencyError(RuntimeError):
 BUNDLED_BIN_SUBDIR = "bin"
 
 
+def _default_data_dir() -> Path:
+    """Default location for `DATA_DIR` when the env var is unset.
+
+    In a normal source run this is `./data`, relative to the current working
+    directory. In a PyInstaller-frozen bundle the CWD is wherever the user
+    launched from (e.g. their home dir if they double-clicked), which is a
+    surprising place to drop `data/`. There we anchor to the directory holding
+    the actual binary (`sys.executable`'s parent) so files land next to the app.
+
+    Note: this deliberately uses `sys.executable`, not `sys._MEIPASS` (which
+    `_activate_bundled_binaries` keys off). `_MEIPASS` is the bundled-resource
+    dir (`_internal/`, or a temp dir under `--onefile`) — wrong for writable
+    user data, which belongs beside the user-visible launcher.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / "data"
+    return Path("./data")
+
+
 def _activate_bundled_binaries() -> None:
     """Prepend the PyInstaller-bundled binary dir to PATH, if present.
 
@@ -55,7 +74,8 @@ class Config:
 def load_config(probe_ffmpeg: bool = True) -> Config:
     _activate_bundled_binaries()
 
-    data_dir = Path(os.environ.get("DATA_DIR", "./data")).resolve()
+    data_dir_env = os.environ.get("DATA_DIR")
+    data_dir = (Path(data_dir_env) if data_dir_env else _default_data_dir()).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
 
     if probe_ffmpeg:

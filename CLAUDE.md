@@ -107,8 +107,11 @@ Two ways to get rrs to people (full docs in README):
   frozen app finds bundled ffmpeg/ffprobe/deno.
 
 Caveats: bundles are unsigned (Gatekeeper/SmartScreen warn); a dynamically-linked
-system ffmpeg won't run elsewhere (use a static build); `DATA_DIR` is launch-CWD-
-relative.
+system ffmpeg won't run elsewhere (use a static build). When `DATA_DIR` is unset,
+a frozen bundle defaults `data/` to the directory holding the binary
+(`sys.executable`'s parent), not the launch CWD (`config._default_data_dir`); a
+source run still defaults to `./data` relative to the CWD. The env var wins in
+both cases.
 
 ## Testing
 
