@@ -63,6 +63,7 @@ but PyInstaller can't cross-compile, so build on the OS you're targeting:
 pip install pyinstaller
 python scripts/pack.py        # or, on Unix: scripts/rrs-pack
 # → dist/rrs-app/  (launcher + _internal/); run dist/rrs-app/rrs-app
+# on macOS the bundle also gets start-rrs-macos.command (see below)
 ```
 
 It bundles rrs's package data (`schema.sql`, `ui/static`) and the
@@ -73,8 +74,12 @@ frozen app puts that dir on PATH at startup (`config._activate_bundled_binaries`
 - A dynamically-linked system ffmpeg (e.g. Homebrew) runs on *your* machine but
   not a clean one — drop a *static* ffmpeg/ffprobe into `_internal/bin/` for real
   distribution. CI already does this.
-- Bundles are unsigned, so macOS Gatekeeper / Windows SmartScreen warn on first
-  launch. Sign + notarize before handing to non-technical users.
+- Bundles are unsigned (not notarized), so macOS Gatekeeper / Windows SmartScreen
+  warn on first launch. On **macOS** a downloaded, unzipped bundle is quarantined
+  and Gatekeeper otherwise blocks each bundled binary in turn (dozens of "Open
+  Anyway" prompts). The bundled `start-rrs-macos.command` clears the quarantine
+  flag from the whole folder once, then starts rrs — see [Running on macOS](#running-a-downloaded-bundle-on-macos).
+  Sign + notarize if you want it to just work for non-technical users.
 - `DATA_DIR` (when unset) defaults to a `data/` folder next to the binary in a
   bundled build, and to `./data` relative to the launch directory in a source
   run. Set `DATA_DIR` to override either.
@@ -95,6 +100,25 @@ Each job installs Deno and a static ffmpeg per OS, then runs `scripts/pack.py`.
 Windows uses `setup-ffmpeg`; macOS arm64 and Linux x64 pull portable builds
 directly from ffmpeg.martin-riedl.de (`setup-ffmpeg` has no arm64 build, and its
 Linux source goes down periodically).
+
+### Running a downloaded bundle on macOS
+
+The bundles are not notarized by Apple. macOS quarantines anything downloaded
+from a browser, so when you unzip `rrs-macos-arm64.zip` Gatekeeper blocks the
+app — and because the bundle contains 130+ libraries plus ffmpeg/ffprobe/deno,
+clearing them one at a time means an endless string of "Open Anyway" prompts.
+
+The zip includes **`start-rrs-macos.command`**, which removes the quarantine flag
+from the entire bundle in one step and then launches rrs. Use it instead of
+running `rrs-app` directly:
+
+```sh
+# In Terminal (running a script this way is never blocked by Gatekeeper):
+bash "/path/to/rrs-macos-arm64/start-rrs-macos.command"
+```
+
+Or double-click `start-rrs-macos.command` in Finder (if macOS prompts the first
+time, right-click it → Open → Open). Then open <http://localhost:8080>.
 
 ## Tests
 

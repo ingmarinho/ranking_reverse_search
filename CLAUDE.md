@@ -108,8 +108,12 @@ Two ways to get rrs to people (full docs in README):
 - `config._activate_bundled_binaries()` prepends `_MEIPASS/bin` to PATH so the
   frozen app finds bundled ffmpeg/ffprobe/deno.
 
-Caveats: bundles are unsigned (Gatekeeper/SmartScreen warn); a dynamically-linked
-system ffmpeg won't run elsewhere (use a static build). When `DATA_DIR` is unset,
+Caveats: bundles are unsigned/un-notarized (Gatekeeper/SmartScreen warn). On
+macOS a downloaded bundle is quarantined and Gatekeeper blocks each bundled
+binary in turn; `pack.py` drops `scripts/start-rrs-macos.command` at the zip root
+(macOS builds only) to `xattr -dr com.apple.quarantine` the whole folder once and
+then launch rrs. A dynamically-linked system ffmpeg won't run elsewhere (use a
+static build). When `DATA_DIR` is unset,
 a frozen bundle defaults `data/` to the directory holding the binary
 (`sys.executable`'s parent), not the launch CWD (`config._default_data_dir`); a
 source run still defaults to `./data` relative to the CWD. The env var wins in

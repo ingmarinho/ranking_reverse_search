@@ -93,6 +93,15 @@ def main() -> int:
         os.chmod(dst, 0o755)  # no-op on Windows, needed on POSIX
         print(f"  + {Path(src).name}  ({src})")
 
+    # macOS bundles are not notarized, so a downloaded copy is quarantined and
+    # Gatekeeper blocks each bundled binary in turn. Ship a launcher at the zip
+    # root that strips quarantine from the whole bundle once, then starts rrs.
+    if sys.platform == "darwin":
+        dst = REPO / "dist" / "rrs-app" / "start-rrs-macos.command"
+        shutil.copy2(REPO / "scripts" / "start-rrs-macos.command", dst)
+        os.chmod(dst, 0o755)
+        print("==> added macOS launcher: dist/rrs-app/start-rrs-macos.command")
+
     launcher = "rrs-app.exe" if os.name == "nt" else "rrs-app"
     print(f"\n==> done: dist/rrs-app/{launcher}")
     if missing:
