@@ -42,7 +42,7 @@ def register_pages(get_db: GetDb, get_cfg: GetCfg) -> None:
         # slot (not the refreshable's), so a refresh never deletes it — avoids
         # the self-deleting-timer race that crashed `once=True` timers created
         # inside `_render_wizard`.
-        ui.timer(1.0, lambda: _poll_progress(db))
+        ui.timer(1.0, lambda: _poll_progress(db, get_cfg()))
 
 
 def _find_active_job(db: Database) -> Job | None:
@@ -64,12 +64,18 @@ _TRANSIENT_STATUSES = (
 _RENDERED_STATUS: dict[int, JobStatus] = {}
 
 
-def _poll_progress(db: Database) -> None:
+def _poll_progress(db: Database, cfg: Config) -> None:
     """Advance the wizard when the active job's live status has moved past what
     is currently on screen (downloading → … → interactive), without a page
     reload. The progress bar within a single stage is CSS-animated, so no
     per-tick refresh is needed while the status is unchanged; no active job is a
     no-op so the interactive view isn't disturbed."""
+    # While the onboarding gate is up (no effective key) the wizard renders the
+    # key input instead of the job, and never records _RENDERED_STATUS for it.
+    # Refreshing here would rebuild that input every tick, stealing focus mid-
+    # paste — and there's no pipeline progress to advance anyway. Bail.
+    if effective_imgbb_key(db, cfg) is None:
+        return
     job = _find_active_job(db)
     if job is None:
         return
