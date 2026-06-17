@@ -46,6 +46,15 @@ def test_upload_image_success(small_jpeg: Path):
 
 
 @respx.mock
+def test_upload_image_sends_week_long_expiration(small_jpeg: Path):
+    route = respx.post("https://api.imgbb.com/1/upload").mock(
+        return_value=httpx.Response(200, json={"data": {"url": "https://i.ibb.co/x.jpg"}})
+    )
+    upload_image(small_jpeg, api_key="k123")
+    assert "expiration=604800" in str(route.calls.last.request.url)
+
+
+@respx.mock
 def test_upload_image_sends_base64_form_field(small_jpeg: Path):
     route = respx.post("https://api.imgbb.com/1/upload").mock(
         return_value=httpx.Response(200, json={"data": {"url": "https://i.ibb.co/x.jpg"}})

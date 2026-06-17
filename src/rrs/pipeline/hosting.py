@@ -49,9 +49,14 @@ def _imgbb_upload(
         raise ImgbbError(f"imgbb malformed response: {resp.text[:200]}") from exc
 
 
+# Hosted frames are only needed for the duration of a reverse-search session;
+# expire them after a week so they don't linger on imgbb indefinitely.
+_FRAME_EXPIRATION_SECONDS = 7 * 24 * 60 * 60
+
+
 def upload_image(path: Path, api_key: str, timeout: float = 30.0) -> str:
     encoded = base64.b64encode(Path(path).read_bytes()).decode("ascii")
-    data = _imgbb_upload(encoded, api_key, timeout)
+    data = _imgbb_upload(encoded, api_key, timeout, {"expiration": _FRAME_EXPIRATION_SECONDS})
     try:
         return data["url"]
     except (KeyError, TypeError) as exc:
