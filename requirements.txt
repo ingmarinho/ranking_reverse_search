@@ -1,0 +1,14 @@
+# Runtime dependencies for rrs (ranking reverse search).
+#
+# pyproject.toml is the source of truth — these mirror its
+# [project].dependencies. Use this file for a quick `pip install -r
+# requirements.txt`; contributors should prefer `pip install -e ".[dev]"`
+# (adds pytest, respx, ruff, and the `rrs` entry point).
+#
+# Also required outside pip: ffmpeg + ffprobe on PATH, and Deno >=2.0
+# (recommended) for full YouTube support. See README.
+
+yt-dlp[default]>=2025.11.12
+nicegui>=2.0
+scenedetect[opencv]>=0.6.4
+httpx>=0.27

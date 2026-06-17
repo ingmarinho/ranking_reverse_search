@@ -5,11 +5,16 @@ videos via reverse image search.
 
 ## Install
 
-Requires Python 3.11+ and ffmpeg on PATH.
+Requires Python 3.11+, with **ffmpeg + ffprobe** on PATH. **Deno ≥2.0** is also
+recommended (`brew install deno` or <https://deno.com/>): yt-dlp runs it to solve
+YouTube's signature/nsig challenges. Missing Deno is non-fatal (you get a warning
+banner) but available formats degrade.
 
 ```sh
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev]"       # contributors: editable install + dev tools
+# or, just to run it:
+pip install -r requirements.txt
 ```
 
 IBM Plex Mono woff2 files are bundled under `src/rrs/ui/static/fonts/`
@@ -18,7 +23,7 @@ IBM Plex Mono woff2 files are bundled under `src/rrs/ui/static/fonts/`
 ## Run
 
 ```sh
-export IMGBB_API_KEY=<your-key>
+export IMGBB_API_KEY=<your-key>   # optional — or enter it in-app on first launch
 export DATA_DIR=./data            # optional, defaults to ./data
 export MAX_CLIP_DURATION_SEC=180  # optional, default 180; rrs refuses longer
                                   # initial clips (it's built for shorts). 0 = off
@@ -26,6 +31,12 @@ rrs                                # or: python -m rrs.main
 ```
 
 Open <http://localhost:8080>.
+
+Reverse search needs an [imgbb](https://api.imgbb.com/) API key (frames are
+uploaded there to get a public URL for the search engines). If you don't set
+`IMGBB_API_KEY`, the app gates behind an onboarding screen where you can paste
+one; you can change it later from the settings button. Uploaded frames expire on
+imgbb automatically (after a week).
 
 ## Workflow
 
@@ -35,8 +46,12 @@ Open <http://localhost:8080>.
    (or add additional frames), then click an engine button to open a
    reverse-image search in a new tab.
 3. When you find the source, paste its URL into the scene's source
-   field and click DOWNLOAD (highest available quality).
+   field and click DOWNLOAD (highest available quality). OPEN FOLDER
+   reveals where clips are saved.
 4. Click TRIM CLIP to scrub and save the relevant moment.
+
+Downloads land in the active job's folder. A "Download an extra clip" box at the
+bottom of the page lets you pull in any additional video by URL.
 
 ## Building a desktop bundle
 

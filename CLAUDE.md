@@ -16,17 +16,23 @@ support — yt-dlp (≥2025.11.12) runs it to solve YouTube's signature/nsig JS
 challenges. Missing it is non-fatal (soft warning + UI banner), but format
 availability degrades. Install via `brew install deno` or https://deno.com/.
 
-Required/optional env vars: `IMGBB_API_KEY` (needed to host frames for search),
-`DATA_DIR` (default `./data`), `PORT` (default 8080), `SCENE_THRESHOLD` (default 27.0),
-`MAX_CLIP_DURATION_SEC` (default 180 — initial clips longer than this are refused
-before download; `0` disables the cap. rrs targets shorts, not full videos).
+Required/optional env vars: `IMGBB_API_KEY` (seeds the imgbb key, but it can also
+be entered in-app — see below), `DATA_DIR` (default `./data`), `PORT` (default 8080),
+`SCENE_THRESHOLD` (default 27.0), `MAX_CLIP_DURATION_SEC` (default 180 — initial clips
+longer than this are refused before download; `0` disables the cap. rrs targets
+shorts, not full videos). Tunable defaults live in `constants.py`.
 
 ## Architecture
 
 Layered, single-process:
 
-`config.py` → `store/` (sqlite) → `pipeline/` → `ui/`, wired in `main.py`.
+`constants.py` → `config.py` → `store/` (sqlite) → `pipeline/` → `ui/`, wired in
+`main.py`.
 
+- **`constants.py`** — the lowest layer: tunable knobs (quality, timeouts, size
+  caps, UI cadences) pulled out of the code. Imports nothing from the package, so
+  any module may import it without a cycle. Some entries double as the defaults
+  for env-overridable settings in `config.py` (env still wins at runtime).
 - **`main.py`** — boots config + DB, registers pages, runs NiceGUI. Holds
   module-level `_DB`/`_CFG` singletons exposed via `get_db()` / `get_cfg()`,
   which are passed into the UI layer as callables. Guards both `__main__` and
@@ -34,12 +40,15 @@ Layered, single-process:
 - **`store/db.py` + `store/schema.sql`** — `Database` wraps a sqlite connection;
   schema is applied on every open (idempotent `CREATE TABLE IF NOT EXISTS`).
   Tables: `jobs`, `scenes`, `frames`, `sources`, `settings`. Row → frozen
-  dataclass (`Job`, `Scene`, `Frame`, `Source`).
+  dataclass (`Job`, `Scene`, `Frame`, `Source`). The imgbb key and per-job
+  `download_dir` live here; new columns are added via idempotent `ALTER TABLE`
+  migrations in `Database._migrate`.
 - **`pipeline/`** — `download` (yt-dlp), `scenes` (PySceneDetect), `frames`
-  (ffmpeg frame extraction), `hosting` (imgbb upload), `engines/`,
-  `jobs` (orchestration).
+  (ffmpeg frame extraction), `hosting` (imgbb upload + key validation/resolution),
+  `engines/`, `jobs` (orchestration).
 - **`ui/`** — `pages.py` (wizard / index page), `components.py` (scene cards),
-  `modals.py` (frame picker, trim modal).
+  `modals.py` (frame picker, trim modal), `onboarding.py` (imgbb-key gate +
+  settings dialog).
 
 ## Key patterns
 
@@ -62,20 +71,21 @@ Layered, single-process:
 
 - `ffmpeg` **and** `ffprobe` must be on PATH — probed at startup
   (`MissingDependencyError`), except when `load_config(probe_ffmpeg=False)`.
-- Reverse search needs `IMGBB_API_KEY`: frames are uploaded to imgbb to get a
-  public URL fed to engine `url_template`s. Without it, the UI shows a banner.
+- Reverse search needs an imgbb key: frames are uploaded to imgbb to get a public
+  URL fed to engine `url_template`s. The key resolves via
+  `hosting.effective_imgbb_key(db, cfg)` — the DB-stored key (set in-app, see
+  `ui/onboarding.py`) takes precedence over the `IMGBB_API_KEY` env var. With no
+  key, `pages.py` gates the whole app behind the onboarding screen. Uploaded
+  frames carry an `expiration` so imgbb auto-deletes them (frames after a week,
+  validation probes after 60s — `IMGBB_*_EXPIRATION_SEC` in `constants.py`).
 - NiceGUI 3.x: `ui.add_head_html(...)` must pass `shared=True` (see commit
   `a7b4184`).
 - `pages.py` occasionally reaches into `db._conn` directly for ad-hoc queries.
 
 ## Packaging & distribution
 
-Three ways to get rrs to people, lightest first (full docs in README):
+Two ways to get rrs to people (full docs in README):
 
-- **Tunnel (`scripts/rrs-share`)** — run locally + expose via `cloudflared` so
-  testers get a URL, no install. Downloads keep working (your residential IP; a
-  cloud host gets blocked by YouTube). Single shared workspace — one tester at a
-  time (the "active job" is just the newest job in the one DB).
 - **Desktop bundle (`scripts/pack.py`; Unix wrapper `scripts/rrs-pack`)** —
   cross-platform PyInstaller `--onedir` build. PyInstaller can't cross-compile,
   so build on the target OS. Bundles `schema.sql`, `ui/static`, and the
